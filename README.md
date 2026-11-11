@@ -173,13 +173,16 @@ sent anywhere. Diagnostics leave out the baby's name.
 python3.14 -m venv .venv && . .venv/bin/activate
 pip install -r requirements_test.txt
 pip install home-assistant-frontend   # same version Home Assistant pins
-pytest --cov
-ruff check . && ruff format --check .
+scripts/validate.sh          # lint, version check, card syntax, unit tests
+scripts/validate.sh --e2e    # also runs the end-to-end test (needs HA 2026.11+ and Playwright)
 ```
 
+Run this before pushing. GitHub Actions only runs validation on pull requests and
+before a release.
+
 `tests/e2e/` holds an end-to-end test that runs against a real Home Assistant
-instance and drives the card in Chromium with Playwright. CI runs it on the minimum
-supported and the latest Home Assistant release.
+instance and drives the card in Chromium with Playwright. CI runs it on pull requests
+and releases, on the minimum supported and the latest Home Assistant release.
 
 ### Releasing
 
