@@ -19,7 +19,8 @@ USER = {"name": "Test", "username": "test", "password": "test-pass-123", "langua
 
 
 async def wait_for(session: aiohttp.ClientSession, base: str) -> None:
-    for _ in range(180):
+    # The first start installs the requirements of default_config, which can be slow.
+    for _ in range(600):
         try:
             async with session.get(f"{base}/api/onboarding") as resp:
                 if resp.status == 200:
