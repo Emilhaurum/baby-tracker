@@ -177,8 +177,8 @@ scripts/validate.sh          # lint, version check, card syntax, unit tests
 scripts/validate.sh --e2e    # also runs the end-to-end test (needs HA 2026.11+ and Playwright)
 ```
 
-Run this before pushing. GitHub Actions only runs validation on pull requests and
-before a release.
+Run this before pushing. GitHub Actions runs validation on pull requests, weekly
+(against the latest Home Assistant) and before a release.
 
 `tests/e2e/` holds an end-to-end test that runs against a real Home Assistant
 instance and drives the card in Chromium with Playwright. CI runs it on pull requests
