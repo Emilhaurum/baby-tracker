@@ -10,7 +10,7 @@ Everything is stored locally in Home Assistant.
 
 | Light | Dark |
 | --- | --- |
-| ![Baby Tracker card, light theme](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/card-light.png) | ![Baby Tracker card, dark theme](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/card-dark.png) |
+| ![Baby Tracker card, light theme](docs/card-light.png) | ![Baby Tracker card, dark theme](docs/card-dark.png) |
 
 ## Features
 
