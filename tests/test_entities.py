@@ -213,3 +213,53 @@ async def test_diagnostics(hass: HomeAssistant, entry: MockConfigEntry, hass_cli
 async def test_errors_raise_for_switch_edge_cases(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     with pytest.raises(ServiceValidationError):
         entry.runtime_data.async_end_sleep()
+
+
+async def test_websocket_sleeps(hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client) -> None:
+    now = dt_util.now()
+    day = now - timedelta(days=2)
+    await call(
+        hass,
+        "add_sleep",
+        start=(day - timedelta(hours=3)).isoformat(),
+        end=(day - timedelta(hours=1)).isoformat(),
+    )
+    # Overlapping sleeps are merged.
+    await call(hass, "add_sleep", start=(day - timedelta(hours=2)).isoformat(), end=day.isoformat())
+    # Outside the requested range.
+    await call(
+        hass,
+        "add_sleep",
+        start=(now - timedelta(days=30)).isoformat(),
+        end=(now - timedelta(days=29)).isoformat(),
+    )
+    await call(hass, "log_diaper", type="wet")
+    await call(hass, "start_sleep")
+
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": "baby_tracker/sleeps",
+            "entry_id": entry.entry_id,
+            "start": (now - timedelta(days=7)).isoformat(),
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert msg["result"]["revision"] == entry.runtime_data.revision
+    sleeps = msg["result"]["sleeps"]
+    assert len(sleeps) == 1
+    start, end = (dt_util.parse_datetime(v) for v in sleeps[0])
+    assert end - start == timedelta(hours=3)
+
+    await client.send_json_auto_id(
+        {"type": "baby_tracker/sleeps", "entry_id": "missing", "start": now.isoformat()}
+    )
+    msg = await client.receive_json()
+    assert msg["error"]["code"] == "not_found"
+
+    await client.send_json_auto_id(
+        {"type": "baby_tracker/sleeps", "entry_id": entry.entry_id, "start": "nope"}
+    )
+    msg = await client.receive_json()
+    assert not msg["success"]

@@ -23,6 +23,7 @@ python scripts/set_version.py --check "$(python -c "import json; print(json.load
 
 step "card"
 node --check custom_components/baby_tracker/frontend/baby-tracker-card.js
+TZ=Europe/Copenhagen node --test tests/js/*.test.mjs
 
 step "unit tests"
 pytest --cov -q

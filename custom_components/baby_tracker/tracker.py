@@ -234,6 +234,11 @@ class BabyTracker:
     # ------------------------------------------------------------------- undo
 
     @property
+    def revision(self) -> int:
+        """Return a number that changes whenever the logged data changes."""
+        return self._revision
+
+    @property
     def undo_available(self) -> bool:
         """Return True while the latest action can be undone."""
         return self._undo is not None
@@ -609,6 +614,7 @@ class BabyTracker:
         return {
             "entry_id": self.entry_id,
             "name": self.name,
+            "revision": self._revision,
             "now": now.isoformat(),
             "sleeping": self.sleeping,
             "sleep_start": self.sleep_start.isoformat() if self.sleep_start else None,

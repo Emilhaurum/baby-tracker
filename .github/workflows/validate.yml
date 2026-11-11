@@ -48,7 +48,9 @@ jobs:
         with:
           node-version: 22
       - name: Check the card's JavaScript
-        run: node --check custom_components/baby_tracker/frontend/baby-tracker-card.js
+        run: |
+          node --check custom_components/baby_tracker/frontend/baby-tracker-card.js
+          TZ=Europe/Copenhagen node --test tests/js/*.test.mjs
       - name: Versions match
         run: python scripts/set_version.py --check "$(jq -r .version custom_components/baby_tracker/manifest.json)"
 

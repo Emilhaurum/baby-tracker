@@ -12,4 +12,6 @@ First release.
 - Buttons, a sleeping switch, and settings for the feeding window and night hours.
 - Actions to log after the fact, add sleeps, undo (30 seconds) and delete entries.
 - Bundled dashboard card with quick actions, summary, 7-day trends and an editable log.
+- Sleep timeline in the card: one line per day showing sleep and awake periods, with a
+  configurable number of days, days per line (every day or averages) and start hour.
 - Logbook entries and `baby_tracker_event` events.

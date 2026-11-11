@@ -9,6 +9,10 @@
  *   show_log: true
  *   log_entries: 10
  *   days: 7
+ *   show_timeline: true
+ *   timeline_days: 14         days shown in the sleep timeline
+ *   timeline_group: 1         days per line (1 = every day, 7 = weekly average, ...)
+ *   timeline_start_hour: 0    hour of day each line starts at (e.g. 18 to keep nights together)
  */
 
 const CARD_VERSION = "1.0.0";
@@ -38,10 +42,16 @@ const UNDO_LABELS = {
 const DEFAULTS = {
   show_summary: true,
   show_trends: true,
+  show_timeline: true,
   show_log: true,
   log_entries: 10,
   days: 7,
+  timeline_days: 14,
+  timeline_group: 1,
+  timeline_start_hour: 0,
 };
+const TIMELINE_MAX_DAYS = 3 * 366;
+const TIMELINE_BINS = 144; // 10 minute resolution for averaged lines
 
 const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -100,6 +110,177 @@ export function dailyTrends(events, days, now = new Date(), sleepStart = null) {
     }
   }
   return buckets;
+}
+
+const clampInt = (value, min, max, fallback) => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+/** Normalised sleep timeline settings from a card config. */
+export function timelineSettings(cfg) {
+  const group = clampInt(cfg.timeline_group, 1, 366, 1);
+  const days = clampInt(cfg.timeline_days, 1, TIMELINE_MAX_DAYS, 14);
+  return {
+    group,
+    lines: Math.max(1, Math.ceil(days / group)),
+    startHour: clampInt(cfg.timeline_start_hour, 0, 23, 0),
+  };
+}
+
+/** Start of the day window `offset` days before the current one. */
+function windowStart(anchor, offset) {
+  const d = new Date(anchor);
+  d.setDate(d.getDate() - offset);
+  return d;
+}
+
+/** The current line's day starts at `startHour` today, or yesterday if that is still ahead. */
+export function timelineAnchor(now, startHour) {
+  const anchor = new Date(now);
+  anchor.setHours(startHour, 0, 0, 0);
+  if (anchor > now) anchor.setDate(anchor.getDate() - 1);
+  return anchor;
+}
+
+/** Oldest time the timeline needs sleeps from. */
+export function timelineRangeStart(settings, now) {
+  return windowStart(timelineAnchor(now, settings.startHour), settings.lines * settings.group - 1);
+}
+
+function overlapMs(intervals, from, to) {
+  let total = 0;
+  for (const [s, e] of intervals) {
+    if (s >= to) break;
+    if (e <= from) continue;
+    total += Math.min(e, to) - Math.max(s, from);
+  }
+  return total;
+}
+
+/**
+ * Lines for the sleep timeline, newest first.
+ *
+ * `intervals` are [start, end] Date pairs sorted by start and not overlapping.
+ * With one day per line each line has exact `segments` ([from, to] as fractions of
+ * the day); with more days per line it has `bins`, the share of those days the
+ * baby was asleep in each 10 minute slot (null for slots that haven't happened).
+ */
+export function timelineRows(intervals, settings, now = new Date()) {
+  const anchor = timelineAnchor(now, settings.startHour);
+  const rows = [];
+  for (let line = 0; line < settings.lines; line++) {
+    const days = [];
+    for (let i = 0; i < settings.group; i++) {
+      const start = windowStart(anchor, line * settings.group + i);
+      const end = windowStart(anchor, line * settings.group + i - 1);
+      days.push({ start, end, length: end - start, elapsed: Math.max(0, Math.min(end, now) - start) });
+    }
+    days.reverse(); // oldest first
+    const relevant = intervals.filter(([s, e]) => e > days[0].start && s < days[days.length - 1].end);
+    const asleep = days.reduce((sum, d) => sum + overlapMs(relevant, d.start, new Date(+d.start + d.elapsed)), 0);
+    const elapsed = days.reduce((sum, d) => sum + d.elapsed, 0);
+    const row = {
+      start: days[0].start,
+      end: days[days.length - 1].end,
+      days: settings.group,
+      // One day: hours asleep (so far). Several: average hours asleep per 24 h.
+      hours: settings.group === 1 ? asleep / 3600000 : elapsed ? (asleep / elapsed) * 24 : null,
+      elapsed: days.length === 1 ? days[0].elapsed / days[0].length : null,
+    };
+    if (settings.group === 1) {
+      const d = days[0];
+      const limit = new Date(+d.start + d.elapsed);
+      row.segments = relevant
+        .filter(([s, e]) => e > d.start && s < limit)
+        .map(([s, e]) => [(Math.max(s, d.start) - d.start) / d.length, (Math.min(e, limit) - d.start) / d.length]);
+    } else {
+      row.bins = [];
+      for (let b = 0; b < TIMELINE_BINS; b++) {
+        let share = 0;
+        let counted = 0;
+        for (const d of days) {
+          const from = new Date(+d.start + (d.length * b) / TIMELINE_BINS);
+          const to = new Date(+d.start + (d.length * (b + 1)) / TIMELINE_BINS);
+          if (from >= now) continue;
+          const until = to < now ? to : now;
+          share += overlapMs(relevant, from, until) / (until - from);
+          counted++;
+        }
+        row.bins.push(counted ? share / counted : null);
+      }
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+const pct = (f) => `${(f * 100).toFixed(3)}%`;
+
+/** CSS gradient that paints one timeline line. */
+function timelineGradient(row) {
+  const stops = [];
+  if (row.segments) {
+    let pos = 0;
+    for (const [from, to] of row.segments) {
+      if (from > pos) stops.push(`var(--bt-awake) ${pct(pos)} ${pct(from)}`);
+      stops.push(`var(--bt-sleep) ${pct(from)} ${pct(to)}`);
+      pos = to;
+    }
+    const elapsed = row.elapsed ?? 1;
+    if (elapsed > pos) stops.push(`var(--bt-awake) ${pct(pos)} ${pct(elapsed)}`);
+    if (elapsed < 1) stops.push(`transparent ${pct(elapsed)} 100%`);
+  } else {
+    const n = row.bins.length;
+    row.bins.forEach((share, i) => {
+      const color =
+        share === null
+          ? "transparent"
+          : `color-mix(in srgb, var(--bt-sleep) ${Math.round(share * 100)}%, var(--bt-awake))`;
+      stops.push(`${color} ${pct(i / n)} ${pct((i + 1) / n)}`);
+    });
+  }
+  return stops.length ? `linear-gradient(to right, ${stops.join(", ")})` : "transparent";
+}
+
+function timelineLabel(row, now) {
+  if (row.days === 1) {
+    const diff = Math.round((startOfDay(now) - startOfDay(row.start)) / 86400000);
+    if (diff === 0) return "Today";
+    return row.start.toLocaleDateString([], { weekday: "short", day: "numeric" });
+  }
+  // Lines are labelled by the dates their days start on.
+  const last = new Date(row.end);
+  last.setDate(last.getDate() - 1);
+  return new Intl.DateTimeFormat([], { day: "numeric", month: "short" }).formatRange(row.start, last);
+}
+
+function timelineHtml(rows, settings, now) {
+  const ticks = [0, 6, 12, 18, 24]
+    .map((h) => {
+      const hour = String((settings.startHour + h) % 24).padStart(2, "0");
+      return `<span style="left:${(h / 24) * 100}%">${hour}</span>`;
+    })
+    .join("");
+  const lines = rows
+    .map((row) => {
+      const label = timelineLabel(row, now);
+      const value = row.hours === null ? "–" : `${row.hours.toFixed(1)} h`;
+      const title = row.days === 1 ? `${label}: ${value} asleep` : `${label}: ${value} asleep per day on average`;
+      return `<div class="tl-row" title="${esc(title)}"><span class="tl-label">${esc(label)}</span>
+        <span class="tl-bar" style="background:${timelineGradient(row)}"></span><span class="tl-value">${value}</span></div>`;
+    })
+    .join("");
+  const legendItems = [
+    ["Asleep", "var(--bt-sleep)"],
+    ["Awake", "var(--bt-awake)"],
+  ];
+  const note = settings.group > 1 ? `<span class="tl-note">Darker = asleep on more of the ${settings.group} days</span>` : "";
+  return `<div class="timeline${settings.group > 1 ? " grouped" : ""}">
+      <div class="tl-row tl-axis"><span class="tl-label"></span><span class="tl-ticks">${ticks}</span><span class="tl-value"></span></div>
+      ${lines}
+    </div>
+    <div class="legend">${legendItems.map(([l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join("")}${note}</div>`;
 }
 
 function describe(e) {
@@ -191,6 +372,7 @@ class BabyTrackerCard extends HTMLElement {
     const changed = this._config && (this._config.entry_id !== config.entry_id || this._config.days !== config.days);
     this._config = { ...DEFAULTS, ...config };
     if (changed) this._resubscribe();
+    else if (this._data && this._config.show_timeline) this._ensureSleeps(this._data);
     this._render();
   }
 
@@ -240,6 +422,7 @@ class BabyTrackerCard extends HTMLElement {
           if (generation !== this._generation) return;
           this._data = data;
           this._error = null;
+          if (this._config.show_timeline) this._ensureSleeps(data);
           this._render();
         },
         { type: `${DOMAIN}/subscribe`, entry_id: entryId, days: Number(this._config.days) || 7 }
@@ -262,6 +445,30 @@ class BabyTrackerCard extends HTMLElement {
     }
   }
 
+  /** Load the sleeps the timeline needs; only again when the data or range changes. */
+  _ensureSleeps(d) {
+    const settings = timelineSettings(this._config);
+    const rangeStart = timelineRangeStart(settings, new Date());
+    const key = `${d.entry_id}|${d.revision}|${rangeStart.toISOString()}`;
+    if (key === this._sleepsKey || key === this._sleepsLoading) return;
+    this._sleepsLoading = key;
+    const generation = this._generation;
+    this._hass
+      .callWS({ type: `${DOMAIN}/sleeps`, entry_id: d.entry_id, start: rangeStart.toISOString() })
+      .then((result) => {
+        if (generation !== this._generation || this._sleepsLoading !== key) return;
+        this._sleeps = result.sleeps.map(([s, e]) => [new Date(s), new Date(e)]);
+        this._sleepsKey = key;
+        this._sleepsLoading = null;
+        this._render();
+      })
+      .catch((err) => {
+        if (this._sleepsLoading === key) this._sleepsLoading = null;
+        this._sleepsError = err && err.message ? err.message : String(err);
+        this._render();
+      });
+  }
+
   _unsubscribe() {
     this._generation++;
     this._subscribing = false;
@@ -275,6 +482,8 @@ class BabyTrackerCard extends HTMLElement {
   _resubscribe() {
     this._unsubscribe();
     this._data = null;
+    this._sleeps = null;
+    this._sleepsKey = null;
     this._retryAt = 0;
     this._subscribe();
   }
@@ -495,6 +704,27 @@ class BabyTrackerCard extends HTMLElement {
         </div>`;
     }
 
+    if (cfg.show_timeline) {
+      const settings = timelineSettings(cfg);
+      let content;
+      if (this._sleeps) {
+        const intervals = [...this._sleeps];
+        if (d.sleep_start) intervals.push([new Date(d.sleep_start), now]);
+        content = timelineHtml(timelineRows(intervals, settings, now), settings, now);
+      } else if (this._sleepsError) {
+        content = `<div class="message error">${esc(this._sleepsError)}</div>`;
+      } else {
+        content = `<div class="message">Loading…</div>`;
+      }
+      const title =
+        settings.group === 1 ? "Sleep timeline" : `Sleep timeline (${settings.group}-day averages)`;
+      html += `
+        <div class="section">
+          <div class="section-title">${title}</div>
+          <div class="chart">${content}</div>
+        </div>`;
+    }
+
     if (cfg.show_log) {
       const entries = [...(d.events || [])]
         .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
@@ -523,7 +753,8 @@ class BabyTrackerCard extends HTMLElement {
 
 const STYLE = `
   :host { display: block; }
-  ha-card { padding: 16px; overflow: hidden; container: bt-card / inline-size; }
+  ha-card { padding: 16px; overflow: hidden; container: bt-card / inline-size;
+    --bt-sleep: ${SLEEP_COLORS.night}; --bt-awake: color-mix(in srgb, ${SLEEP_COLORS.day} 30%, var(--card-background-color)); }
   ha-icon { --mdc-icon-size: 18px; }
   .message { padding: 8px 0; color: var(--secondary-text-color); }
   .message.error { color: var(--error-color, #db4437); }
@@ -580,6 +811,17 @@ const STYLE = `
   .chart text.value { fill: var(--primary-text-color); }
   .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.75em; color: var(--secondary-text-color); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .timeline { display: flex; flex-direction: column; gap: 3px; padding: 4px 0 8px; }
+  .tl-row { display: grid; grid-template-columns: 5.2em 1fr 3.4em; align-items: center; gap: 8px; font-size: 0.75em; }
+  .timeline.grouped .tl-row { grid-template-columns: 7.5em 1fr 3.4em; }
+  .tl-label { color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl-value { text-align: right; font-variant-numeric: tabular-nums; }
+  .tl-bar { height: 12px; border-radius: 3px; background-color: var(--divider-color); }
+  .tl-ticks { position: relative; height: 1.2em; color: var(--secondary-text-color); }
+  .tl-ticks span { position: absolute; transform: translateX(-50%); }
+  .tl-ticks span:first-child { transform: none; }
+  .tl-ticks span:last-child { transform: translateX(-100%); }
+  .tl-note { color: var(--secondary-text-color); }
   .log { list-style: none; margin: 0; padding: 0; }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .log li.day { border: none; padding-top: 10px; font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -636,6 +878,17 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>Baby <select data-key="entry_id">${options}</select></label>
         ${check("show_summary", "Show night / daytime summary")}
         ${check("show_trends", "Show trends")}
+        ${check("show_timeline", "Show sleep timeline")}
+        <label>Timeline days <input type="number" min="1" max="${TIMELINE_MAX_DAYS}" data-key="timeline_days" value="${esc(c.timeline_days)}"></label>
+        <label>Days per timeline line <select data-key="timeline_group" data-number>
+          ${[1, 3, 7, 14, 30]
+            .concat([1, 3, 7, 14, 30].includes(Number(c.timeline_group)) ? [] : [Number(c.timeline_group)])
+            .map((n) => `<option value="${n}" ${Number(c.timeline_group) === n ? "selected" : ""}>${n === 1 ? "Every day" : `Average of ${n} days`}</option>`)
+            .join("")}
+        </select></label>
+        <label>Timeline lines start at <select data-key="timeline_start_hour" data-number>
+          ${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${Number(c.timeline_start_hour) === h ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}
+        </select></label>
         ${check("show_log", "Show log")}
         <label>Log entries <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
         <label>Days of history <input type="number" min="1" max="31" data-key="days" value="${esc(c.days)}"></label>
@@ -644,7 +897,7 @@ class BabyTrackerCardEditor extends HTMLElement {
       el.addEventListener("change", (ev) => {
         const key = ev.target.dataset.key;
         let value = ev.target.type === "checkbox" ? ev.target.checked : ev.target.value;
-        if (ev.target.type === "number") value = value === "" ? "" : Number(value);
+        if (ev.target.type === "number" || "number" in ev.target.dataset) value = value === "" ? "" : Number(value);
         this._changed(key, value);
       });
     });

@@ -77,6 +77,11 @@ await page.goto(`${base}/dashboard-baby/baby`);
 const card = page.locator("baby-tracker-card");
 await card.locator(".tiles").waitFor({ timeout: 60000 });
 
+// The sleep timeline shows one line per day (14 by default).
+await card.locator(".timeline").waitFor({ timeout: 30000 });
+const timelineLines = await card.locator(".timeline .tl-row:not(.tl-axis)").count();
+if (timelineLines !== 14) fail(`expected 14 timeline lines, got ${timelineLines}`);
+
 const chip = async () => (await card.locator(".chip").first().textContent()).trim();
 const before = await chip();
 await card.locator('[data-action="diaper"][data-value="both"]').click();
