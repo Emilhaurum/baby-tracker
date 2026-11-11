@@ -106,4 +106,4 @@ class BabySleepCalendar(BabyTrackerEntity, CalendarEntity):
         recurrence_range: str | None = None,
     ) -> None:
         """Delete a sleep."""
-        self.tracker.async_delete_event(uid)
+        self.tracker.async_delete_event(uid, KIND_SLEEP)

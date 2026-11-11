@@ -173,6 +173,9 @@ class BabyTrackerCard extends HTMLElement {
     this._error = null;
     this._bottleOpen = false;
     this._bottleAmount = "";
+    // Bumped whenever a subscription is dropped, so stale in-flight ones are discarded.
+    this._generation = 0;
+    this._retryAt = 0;
   }
 
   static getConfigElement() {
@@ -192,9 +195,9 @@ class BabyTrackerCard extends HTMLElement {
   }
 
   set hass(hass) {
-    const first = !this._hass;
     this._hass = hass;
-    if (first || (!this._unsub && !this._subscribing)) this._subscribe();
+    // After an error, wait before retrying instead of retrying on every state change.
+    if (!this._unsub && !this._subscribing && Date.now() >= this._retryAt) this._subscribe();
   }
 
   get hass() {
@@ -203,6 +206,7 @@ class BabyTrackerCard extends HTMLElement {
 
   connectedCallback() {
     this._timer = window.setInterval(() => this._tick(), 15000);
+    this._retryAt = 0;
     if (this._hass && !this._unsub) this._subscribe();
   }
 
@@ -220,7 +224,8 @@ class BabyTrackerCard extends HTMLElement {
   }
 
   async _subscribe() {
-    if (!this._hass || !this._config || this._subscribing || this._unsub) return;
+    if (!this._hass || !this._config || this._subscribing || this._unsub || !this.isConnected) return;
+    const generation = ++this._generation;
     this._subscribing = true;
     try {
       let entryId = this._config.entry_id;
@@ -229,24 +234,37 @@ class BabyTrackerCard extends HTMLElement {
         if (!babies.length) throw new Error("No baby has been added yet. Add the Baby Tracker integration first.");
         entryId = babies[0].entry_id;
       }
-      this._entryId = entryId;
-      this._unsub = await this._hass.connection.subscribeMessage(
+      if (generation !== this._generation) return;
+      const unsub = await this._hass.connection.subscribeMessage(
         (data) => {
+          if (generation !== this._generation) return;
           this._data = data;
           this._error = null;
           this._render();
         },
         { type: `${DOMAIN}/subscribe`, entry_id: entryId, days: Number(this._config.days) || 7 }
       );
+      if (generation !== this._generation) {
+        // The card was reconfigured or removed while subscribing.
+        Promise.resolve(unsub()).catch(() => {});
+        return;
+      }
+      this._entryId = entryId;
+      this._unsub = unsub;
+      this._retryAt = 0;
     } catch (err) {
+      if (generation !== this._generation) return;
       this._error = err && err.message ? err.message : String(err);
+      this._retryAt = Date.now() + 30000;
       this._render();
     } finally {
-      this._subscribing = false;
+      if (generation === this._generation) this._subscribing = false;
     }
   }
 
   _unsubscribe() {
+    this._generation++;
+    this._subscribing = false;
     if (this._unsub) {
       const unsub = this._unsub;
       this._unsub = null;
@@ -257,6 +275,7 @@ class BabyTrackerCard extends HTMLElement {
   _resubscribe() {
     this._unsubscribe();
     this._data = null;
+    this._retryAt = 0;
     this._subscribe();
   }
 
@@ -335,6 +354,10 @@ class BabyTrackerCard extends HTMLElement {
 
   _render() {
     if (!this.shadowRoot || !this._config) return;
+    // Keep focus and caret in the bottle amount field across re-renders.
+    const active = this.shadowRoot.activeElement;
+    const keepFocus = active && active.id === "bottle-amount";
+    const caret = keepFocus ? [active.selectionStart, active.selectionEnd] : null;
     let body;
     if (this._error) {
       body = `<div class="message error">${esc(this._error)}</div>`;
@@ -354,6 +377,14 @@ class BabyTrackerCard extends HTMLElement {
       amount.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") this.shadowRoot.querySelector('[data-action="bottle-log"]').click();
       });
+      if (keepFocus) {
+        amount.focus();
+        try {
+          amount.setSelectionRange(caret[0], caret[1]);
+        } catch (_err) {
+          // number inputs don't support selection ranges in every browser
+        }
+      }
     }
   }
 

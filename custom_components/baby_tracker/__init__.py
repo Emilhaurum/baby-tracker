@@ -43,6 +43,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: BabyTrackerConfigEntry) 
     entry.runtime_data = tracker
     entry.async_on_unload(tracker.async_unload)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Refresh dashboards that were subscribed before a reload.
+    tracker.async_notify()
     return True
 
 

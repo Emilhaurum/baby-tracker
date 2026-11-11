@@ -141,7 +141,8 @@
     "already_sleeping": { "message": "The baby is already marked as sleeping." },
     "not_sleeping": { "message": "The baby is not marked as sleeping." },
     "end_before_start": { "message": "The end time must be after the start time." },
-    "all_day_sleep": { "message": "Sleeps need a start and end time, not whole days." }
+    "all_day_sleep": { "message": "Sleeps need a start and end time, not whole days." },
+    "night_window_empty": { "message": "The night can't start and end at the same time." }
   },
   "selector": {
     "diaper_type": {

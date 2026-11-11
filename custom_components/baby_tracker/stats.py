@@ -10,11 +10,22 @@ from typing import Any
 Interval = tuple[datetime, datetime]
 
 
+def merge_intervals(intervals: Iterable[Interval]) -> list[Interval]:
+    """Sort intervals and merge overlapping ones so no time is counted twice."""
+    merged: list[Interval] = []
+    for start, end in sorted((s.astimezone(UTC), e.astimezone(UTC)) for s, e in intervals):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
 def overlap_seconds(intervals: Iterable[Interval], start: datetime, end: datetime) -> float:
     """Return how many seconds of the intervals fall inside [start, end)."""
     total = 0.0
     start, end = start.astimezone(UTC), end.astimezone(UTC)
-    for i_start, i_end in ((s.astimezone(UTC), e.astimezone(UTC)) for s, e in intervals):
+    for i_start, i_end in merge_intervals(intervals):
         total += max(0.0, (min(i_end, end) - max(i_start, start)).total_seconds())
     return total
 
@@ -87,7 +98,7 @@ def night_day_stats(
     windows that have already started.
     """
     tz = now.tzinfo
-    ordered = sorted((s.astimezone(UTC), e.astimezone(UTC)) for s, e in intervals)
+    ordered = merge_intervals(intervals)
     now_utc = now.astimezone(UTC)
     nights: list[WindowStats] = []
     day_list: list[WindowStats] = []

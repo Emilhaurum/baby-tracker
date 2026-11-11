@@ -13,6 +13,7 @@ import uuid
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -94,6 +95,11 @@ class BabyEvent:
             sides=[{**s, "time": _parse(s["time"])} for s in data.get("sides", [])],
             amount_ml=data.get("amount_ml"),
         )
+
+
+def signal_update(entry_id: str) -> str:
+    """Return the dispatcher signal sent when a baby's data changes."""
+    return f"{DOMAIN}_update_{entry_id}"
 
 
 def _parse(value: str) -> datetime:
@@ -202,13 +208,17 @@ class BabyTracker:
         return remove
 
     @callback
-    def _notify(self) -> None:
+    def async_notify(self) -> None:
+        """Tell entities and dashboard subscriptions that something changed."""
         for listener in list(self._listeners):
             listener()
+        # Websocket subscriptions follow the config entry, not this instance, so
+        # they keep working when the entry is reloaded (e.g. after a rename).
+        async_dispatcher_send(self.hass, signal_update(self.entry_id))
 
     @callback
     def _async_tick(self, _now: datetime) -> None:
-        self._notify()
+        self.async_notify()
 
     @callback
     def _changed(self, action: str | None = None, data: dict[str, Any] | None = None) -> None:
@@ -219,7 +229,7 @@ class BabyTracker:
                 EVENT_BABY_TRACKER,
                 {"config_entry_id": self.entry_id, "name": self.name, "action": action, **(data or {})},
             )
-        self._notify()
+        self.async_notify()
 
     # ------------------------------------------------------------------- undo
 
@@ -249,7 +259,7 @@ class BabyTracker:
     def _expire_undo(self, _now: datetime) -> None:
         self._cancel_undo = None
         self._undo = None
-        self._notify()
+        self.async_notify()
 
     @callback
     def async_undo(self) -> str:
@@ -274,10 +284,10 @@ class BabyTracker:
     def _remove(self, event_id: str) -> None:
         self.events = [e for e in self.events if e.id != event_id]
 
-    def get_event(self, event_id: str) -> BabyEvent:
-        """Return an event by id."""
+    def get_event(self, event_id: str, kind: str | None = None) -> BabyEvent:
+        """Return an event by id (optionally only of one kind)."""
         for event in self.events:
-            if event.id == event_id:
+            if event.id == event_id and (kind is None or event.kind == kind):
                 return event
         raise ServiceValidationError(
             translation_domain=DOMAIN,
@@ -334,13 +344,15 @@ class BabyTracker:
             None,
         )
         window = timedelta(minutes=self.merge_minutes)
-        if previous is not None and timedelta(0) <= at - (previous.end or previous.start) < window:
+        # Merge when within the window of the latest switch, or when backdated to
+        # a time inside the feeding itself.
+        if previous is not None and at - (previous.end or previous.start) < window:
             before = (copy.copy(previous.sides), previous.end, previous.amount_ml)
 
             def restore() -> None:
                 previous.sides, previous.end, previous.amount_ml = before
 
-            previous.sides = [*previous.sides, entry]
+            previous.sides = sorted([*previous.sides, entry], key=lambda s: s["time"])
             previous.end = max(at, previous.end or previous.start)
             if amount_ml is not None:
                 previous.amount_ml = (previous.amount_ml or 0) + amount_ml
@@ -437,7 +449,7 @@ class BabyTracker:
     @callback
     def async_update_sleep(self, event_id: str, start: datetime, end: datetime) -> BabyEvent:
         """Change the times of a finished sleep."""
-        event = self.get_event(event_id)
+        event = self.get_event(event_id, KIND_SLEEP)
         start_utc, end_utc = _as_utc(start), _as_utc(end)
         if end_utc <= start_utc:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="end_before_start")
@@ -456,9 +468,9 @@ class BabyTracker:
         return event
 
     @callback
-    def async_delete_event(self, event_id: str) -> None:
+    def async_delete_event(self, event_id: str, kind: str | None = None) -> None:
         """Delete a logged event."""
-        event = self.get_event(event_id)
+        event = self.get_event(event_id, kind)
         self._remove(event_id)
         self._set_undo("delete", lambda: self._insert(event))
         self._changed("delete", {"event_id": event_id, "kind": event.kind})
@@ -472,6 +484,10 @@ class BabyTracker:
     @callback
     def async_set_night(self, *, start: time | None = None, end: time | None = None) -> None:
         """Set when the night starts / ends."""
+        new_start = (start or self.night_start).replace(second=0, microsecond=0)
+        new_end = (end or self.night_end).replace(second=0, microsecond=0)
+        if new_start == new_end:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="night_window_empty")
         if start is not None:
             self.night_start = start.replace(second=0, microsecond=0)
         if end is not None:
@@ -508,11 +524,15 @@ class BabyTracker:
 
     def next_side(self) -> str:
         """Return which breast to start with next time."""
-        last = self.latest(KIND_FEEDING)
-        breast = (
-            next((s["side"] for s in reversed(last.sides) if s["side"] != SIDE_BOTTLE), None)
-            if last
-            else None
+        breast = next(
+            (
+                s["side"]
+                for e in reversed(self.events)
+                if e.kind == KIND_FEEDING
+                for s in reversed(e.sides)
+                if s["side"] != SIDE_BOTTLE
+            ),
+            None,
         )
         return SIDE_LEFT if breast != SIDE_LEFT else SIDE_RIGHT
 

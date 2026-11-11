@@ -16,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import BabyTrackerConfigEntry
 from .const import DIAPER_TYPES, FEEDING_SIDES, KIND_DIAPER, KIND_FEEDING, SIDE_LEFT, SIDE_RIGHT
@@ -56,6 +57,8 @@ class BabySensorDescription(SensorEntityDescription):
 
     value_fn: Callable[[BabyTracker], Any]
     attrs_fn: Callable[[BabyTracker], dict[str, Any]] | None = None
+    # Daily totals that can go down (undo / delete) use TOTAL with a midnight reset.
+    resets_daily: bool = False
 
 
 SENSORS: tuple[BabySensorDescription, ...] = (
@@ -112,7 +115,8 @@ SENSORS: tuple[BabySensorDescription, ...] = (
         key="bottle_today",
         translation_key="bottle_today",
         device_class=SensorDeviceClass.VOLUME,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
+        resets_daily=True,
         native_unit_of_measurement=UnitOfVolume.MILLILITERS,
         suggested_display_precision=0,
         value_fn=lambda t: t.bottle_ml_today(),
@@ -175,6 +179,13 @@ class BabySensor(BabyTrackerEntity, SensorEntity):
     def native_value(self) -> Any:
         """Return the value."""
         return self.entity_description.value_fn(self.tracker)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """Return midnight for totals that reset daily."""
+        if not self.entity_description.resets_daily:
+            return None
+        return dt_util.start_of_local_day()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

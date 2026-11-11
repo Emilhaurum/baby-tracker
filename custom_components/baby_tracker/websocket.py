@@ -8,10 +8,12 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 import voluptuous as vol
 
 from .const import DOMAIN
 from .services import get_tracker
+from .tracker import signal_update
 
 
 @callback
@@ -47,8 +49,9 @@ def ws_subscribe(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Send the baby's state now and whenever it changes."""
+    entry_id: str = msg["entry_id"]
     try:
-        tracker = get_tracker(hass, msg["entry_id"])
+        get_tracker(hass, entry_id)
     except ServiceValidationError as err:
         connection.send_error(msg["id"], websocket_api.ERR_NOT_FOUND, str(err))
         return
@@ -56,8 +59,15 @@ def ws_subscribe(
 
     @callback
     def forward() -> None:
+        # Look the tracker up each time: the entry may have been reloaded. It is
+        # read directly because the first update after a reload is sent while
+        # the entry is still finishing its setup.
+        entry = hass.config_entries.async_get_entry(entry_id)
+        tracker = getattr(entry, "runtime_data", None) if entry else None
+        if tracker is None:
+            return
         connection.send_message(websocket_api.event_message(msg["id"], tracker.snapshot(days)))
 
-    connection.subscriptions[msg["id"]] = tracker.async_add_listener(forward)
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, signal_update(entry_id), forward)
     connection.send_result(msg["id"])
     forward()
