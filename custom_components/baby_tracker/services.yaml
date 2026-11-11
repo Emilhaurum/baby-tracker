@@ -1,0 +1,77 @@
+log_diaper:
+  fields:
+    config_entry_id: &entry
+      required: true
+      selector:
+        config_entry:
+          integration: baby_tracker
+    type:
+      required: true
+      default: wet
+      selector:
+        select:
+          translation_key: diaper_type
+          options:
+            - wet
+            - dirty
+            - both
+    time: &time
+      selector:
+        datetime:
+
+log_feeding:
+  fields:
+    config_entry_id: *entry
+    side:
+      required: true
+      default: left
+      selector:
+        select:
+          translation_key: feeding_side
+          options:
+            - left
+            - right
+            - bottle
+    amount_ml:
+      selector:
+        number:
+          min: 0
+          max: 2000
+          step: 5
+          unit_of_measurement: ml
+          mode: box
+    time: *time
+
+start_sleep:
+  fields:
+    config_entry_id: *entry
+    time: *time
+
+end_sleep:
+  fields:
+    config_entry_id: *entry
+    time: *time
+
+add_sleep:
+  fields:
+    config_entry_id: *entry
+    start:
+      required: true
+      selector:
+        datetime:
+    end:
+      required: true
+      selector:
+        datetime:
+
+undo:
+  fields:
+    config_entry_id: *entry
+
+delete_event:
+  fields:
+    config_entry_id: *entry
+    event_id:
+      required: true
+      selector:
+        text:
