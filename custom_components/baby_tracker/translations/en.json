@@ -1,0 +1,216 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a baby",
+        "description": "Each baby you add gets its own device, sensors, buttons and sleep calendar.",
+        "data": { "name": "Name" },
+        "data_description": { "name": "The baby's name, used for the device and entity names." }
+      },
+      "reconfigure": {
+        "title": "Rename baby",
+        "data": { "name": "Name" },
+        "data_description": { "name": "The baby's name, used for the device and entity names." }
+      }
+    },
+    "error": {
+      "name_required": "Please enter a name."
+    },
+    "abort": {
+      "already_configured": "A baby with this name is already being tracked.",
+      "reconfigure_successful": "The baby was renamed."
+    }
+  },
+  "entity": {
+    "button": {
+      "diaper_wet": { "name": "Diaper wet" },
+      "diaper_dirty": { "name": "Diaper dirty" },
+      "diaper_both": { "name": "Diaper wet and dirty" },
+      "feed_left": { "name": "Feed left" },
+      "feed_right": { "name": "Feed right" },
+      "feed_bottle": { "name": "Feed bottle" },
+      "undo": { "name": "Undo last action" }
+    },
+    "calendar": {
+      "sleep": { "name": "Sleep" }
+    },
+    "number": {
+      "feeding_merge_window": { "name": "Same feeding window" }
+    },
+    "sensor": {
+      "last_diaper": {
+        "name": "Last diaper",
+        "state_attributes": {
+          "type": {
+            "name": "Type",
+            "state": { "wet": "Wet", "dirty": "Dirty", "both": "Wet and dirty" }
+          }
+        }
+      },
+      "last_diaper_type": {
+        "name": "Last diaper type",
+        "state": { "wet": "Wet", "dirty": "Dirty", "both": "Wet and dirty" }
+      },
+      "diapers_today": {
+        "name": "Diapers today",
+        "unit_of_measurement": "diapers",
+        "state_attributes": {
+          "wet": { "name": "Wet" },
+          "dirty": { "name": "Dirty" },
+          "both": { "name": "Wet and dirty" }
+        }
+      },
+      "last_feeding": {
+        "name": "Last feeding",
+        "state_attributes": {
+          "side": {
+            "name": "Side",
+            "state": { "left": "Left", "right": "Right", "bottle": "Bottle" }
+          },
+          "amount_ml": { "name": "Amount (ml)" },
+          "sides": { "name": "Sides" },
+          "last_switch": { "name": "Last side switch" }
+        }
+      },
+      "last_feeding_side": {
+        "name": "Last feeding side",
+        "state": { "left": "Left", "right": "Right", "bottle": "Bottle" }
+      },
+      "next_feeding_side": {
+        "name": "Next feeding side",
+        "state": { "left": "Left", "right": "Right" }
+      },
+      "feedings_today": {
+        "name": "Feedings today",
+        "unit_of_measurement": "feedings",
+        "state_attributes": {
+          "left": { "name": "Left" },
+          "right": { "name": "Right" },
+          "bottle": { "name": "Bottle" }
+        }
+      },
+      "bottle_today": { "name": "Bottle today" },
+      "sleep_today": { "name": "Sleep today" },
+      "last_night_sleep": {
+        "name": "Last night sleep",
+        "state_attributes": {
+          "awake": { "name": "Awake (h)" },
+          "wakes": { "name": "Wake-ups" },
+          "from": { "name": "From" },
+          "to": { "name": "To" },
+          "avg_asleep": { "name": "Average asleep (h)" },
+          "avg_awake": { "name": "Average awake (h)" },
+          "avg_wakes": { "name": "Average wake-ups" },
+          "nights": { "name": "Nights" }
+        }
+      },
+      "daytime_sleep": {
+        "name": "Daytime sleep",
+        "state_attributes": {
+          "awake": { "name": "Awake (h)" },
+          "naps": { "name": "Naps" },
+          "from": { "name": "From" },
+          "to": { "name": "To" },
+          "done": { "name": "Finished" },
+          "avg_asleep": { "name": "Average asleep (h)" },
+          "avg_awake": { "name": "Average awake (h)" },
+          "avg_naps": { "name": "Average naps" },
+          "days": { "name": "Days" }
+        }
+      },
+      "last_woke_up": { "name": "Last woke up" }
+    },
+    "switch": {
+      "sleeping": {
+        "name": "Sleeping",
+        "state_attributes": { "since": { "name": "Since" } }
+      }
+    },
+    "time": {
+      "night_start": { "name": "Night starts" },
+      "night_end": { "name": "Night ends" }
+    }
+  },
+  "exceptions": {
+    "entry_not_found": { "message": "No baby with config entry ID {entry_id} was found." },
+    "entry_not_loaded": { "message": "{name} is not loaded." },
+    "event_not_found": { "message": "No logged entry with ID {event_id} was found." },
+    "invalid_diaper_type": { "message": "Unknown diaper type: {type}." },
+    "invalid_side": { "message": "Unknown feeding side: {side}." },
+    "nothing_to_undo": { "message": "There is nothing to undo (the undo window is 30 seconds)." },
+    "already_sleeping": { "message": "The baby is already marked as sleeping." },
+    "not_sleeping": { "message": "The baby is not marked as sleeping." },
+    "end_before_start": { "message": "The end time must be after the start time." },
+    "all_day_sleep": { "message": "Sleeps need a start and end time, not whole days." },
+    "night_window_empty": { "message": "The night can't start and end at the same time." }
+  },
+  "selector": {
+    "diaper_type": {
+      "options": { "wet": "Wet", "dirty": "Dirty", "both": "Wet and dirty" }
+    },
+    "feeding_side": {
+      "options": { "left": "Left", "right": "Right", "bottle": "Bottle" }
+    }
+  },
+  "services": {
+    "log_diaper": {
+      "name": "Log diaper",
+      "description": "Logs a diaper change.",
+      "fields": {
+        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
+        "type": { "name": "Type", "description": "What was in the diaper." },
+        "time": { "name": "Time", "description": "When it happened. Defaults to now." }
+      }
+    },
+    "log_feeding": {
+      "name": "Log feeding",
+      "description": "Logs a feeding. Entries within the same feeding window as the previous one are added to that feeding as a side switch.",
+      "fields": {
+        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
+        "side": { "name": "Side", "description": "Left or right breast, or bottle." },
+        "amount_ml": { "name": "Amount", "description": "How much was fed (for bottle feeds)." },
+        "time": { "name": "Time", "description": "When it happened. Defaults to now." }
+      }
+    },
+    "start_sleep": {
+      "name": "Start sleep",
+      "description": "Marks the baby as asleep.",
+      "fields": {
+        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
+        "time": { "name": "Time", "description": "When the baby fell asleep. Defaults to now." }
+      }
+    },
+    "end_sleep": {
+      "name": "End sleep",
+      "description": "Marks the baby as awake and stores the sleep in the sleep calendar.",
+      "fields": {
+        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
+        "time": { "name": "Time", "description": "When the baby woke up. Defaults to now." }
+      }
+    },
+    "add_sleep": {
+      "name": "Add sleep",
+      "description": "Adds a finished sleep after the fact.",
+      "fields": {
+        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
+        "start": { "name": "Start", "description": "When the baby fell asleep." },
+        "end": { "name": "End", "description": "When the baby woke up." }
+      }
+    },
+    "undo": {
+      "name": "Undo last action",
+      "description": "Reverts the latest logged action, within 30 seconds.",
+      "fields": {
+        "config_entry_id": { "name": "Baby", "description": "The baby to undo for." }
+      }
+    },
+    "delete_event": {
+      "name": "Delete entry",
+      "description": "Deletes a logged diaper, feeding or sleep.",
+      "fields": {
+        "config_entry_id": { "name": "Baby", "description": "The baby the entry belongs to." },
+        "event_id": { "name": "Entry ID", "description": "The ID of the logged entry (shown in the dashboard card)." }
+      }
+    }
+  }
+}
