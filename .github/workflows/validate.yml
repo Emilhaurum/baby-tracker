@@ -49,10 +49,10 @@ jobs:
           node-version: 22
       - name: Check the card's JavaScript
         run: |
-          node --check custom_components/baby_tracker/frontend/baby-tracker-card.js
+          node --check custom_components/baby_logger/frontend/baby-logger-card.js
           TZ=Europe/Copenhagen node --test tests/js/*.test.mjs
       - name: Versions match
-        run: python scripts/set_version.py --check "$(jq -r .version custom_components/baby_tracker/manifest.json)"
+        run: python scripts/set_version.py --check "$(jq -r .version custom_components/baby_logger/manifest.json)"
 
   tests:
     name: Tests
@@ -108,7 +108,7 @@ jobs:
       - name: Start Home Assistant
         run: |
           mkdir -p ha-config/custom_components
-          cp -r custom_components/baby_tracker ha-config/custom_components/
+          cp -r custom_components/baby_logger ha-config/custom_components/
           printf 'default_config:\nlogger:\n  default: warning\n' > ha-config/configuration.yaml
           nohup hass -c ha-config > hass.log 2>&1 &
       - name: Set up the integration and dashboard
@@ -118,7 +118,7 @@ jobs:
         run: node tests/e2e/card.mjs http://localhost:8123 tokens.json e2e-output
       - name: Check the log for errors from the integration
         run: |
-          if grep -E "ERROR.*baby_tracker|Traceback.*baby_tracker" hass.log; then exit 1; fi
+          if grep -E "ERROR.*baby_logger|Traceback.*baby_logger" hass.log; then exit 1; fi
       - name: Show the Home Assistant log
         if: failure()
         run: tail -n 300 hass.log || true

@@ -13,8 +13,8 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST = ROOT / "custom_components/baby_tracker/manifest.json"
-CARD = ROOT / "custom_components/baby_tracker/frontend/baby-tracker-card.js"
+MANIFEST = ROOT / "custom_components/baby_logger/manifest.json"
+CARD = ROOT / "custom_components/baby_logger/frontend/baby-logger-card.js"
 PYPROJECT = ROOT / "pyproject.toml"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?$")
 
@@ -25,7 +25,7 @@ def current() -> dict[str, str]:
     pyproject = re.search(r'^version = "([^"]+)"', PYPROJECT.read_text(), re.M).group(1)
     return {
         "manifest.json": json.loads(MANIFEST.read_text())["version"],
-        "baby-tracker-card.js": card,
+        "baby-logger-card.js": card,
         "pyproject.toml": pyproject,
     }
 

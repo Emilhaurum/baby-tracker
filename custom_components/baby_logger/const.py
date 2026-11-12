@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import time
 from typing import Final
 
-DOMAIN: Final = "baby_tracker"
+DOMAIN: Final = "baby_logger"
 
 STORAGE_VERSION: Final = 1
 STORAGE_KEY_PREFIX: Final = DOMAIN
@@ -67,4 +67,4 @@ SERVICE_UNDO: Final = "undo"
 SERVICE_DELETE_EVENT: Final = "delete_event"
 
 FRONTEND_URL_BASE: Final = f"/{DOMAIN}_static"
-CARD_FILENAME: Final = "baby-tracker-card.js"
+CARD_FILENAME: Final = "baby-logger-card.js"

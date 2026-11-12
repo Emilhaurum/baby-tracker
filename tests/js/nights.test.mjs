@@ -8,7 +8,7 @@ globalThis.window = globalThis;
 globalThis.customElements = { get: () => true, define: () => {} };
 
 const { parseClock, nightSettings, nightStats, nightsRangeStart } = await import(
-  "../../custom_components/baby_tracker/frontend/baby-tracker-card.js"
+  "../../custom_components/baby_logger/frontend/baby-logger-card.js"
 );
 
 const at = (s) => new Date(s);

@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.baby_tracker.const import DOMAIN
+from custom_components.baby_logger.const import DOMAIN
 
 from .helpers import call
 
@@ -75,9 +75,9 @@ async def test_remove_deletes_storage(
 
 async def test_card_is_served(hass: HomeAssistant, entry: MockConfigEntry, hass_client) -> None:
     urls = hass.data[DATA_EXTRA_MODULE_URL].urls
-    url = next(u for u in urls if "baby-tracker-card.js" in u)
-    assert url.startswith("/baby_tracker_static/baby-tracker-card.js?v=")
+    url = next(u for u in urls if "baby-logger-card.js" in u)
+    assert url.startswith("/baby_logger_static/baby-logger-card.js?v=")
     client = await hass_client()
     response = await client.get(url.split("?")[0])
     assert response.status == 200
-    assert 'customElements.define("baby-tracker-card"' in await response.text()
+    assert 'customElements.define("baby-logger-card"' in await response.text()

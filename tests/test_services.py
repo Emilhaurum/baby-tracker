@@ -15,7 +15,7 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.baby_tracker.const import EVENT_BABY_TRACKER
+from custom_components.baby_logger.const import EVENT_BABY_TRACKER
 
 from .helpers import attrs, call, state
 
@@ -299,7 +299,7 @@ async def test_delete_and_undo_delete(hass: HomeAssistant, entry: MockConfigEntr
 async def test_unknown_entry(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
-            "baby_tracker", "log_diaper", {"config_entry_id": "missing", "type": "wet"}, blocking=True
+            "baby_logger", "log_diaper", {"config_entry_id": "missing", "type": "wet"}, blocking=True
         )
     await hass.config_entries.async_unload(entry.entry_id)
     with pytest.raises(ServiceValidationError):

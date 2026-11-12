@@ -4,7 +4,7 @@ log_diaper:
       required: true
       selector:
         config_entry:
-          integration: baby_tracker
+          integration: baby_logger
     type:
       required: true
       default: wet

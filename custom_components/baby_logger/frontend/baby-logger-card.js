@@ -1,8 +1,8 @@
 /*
  * Baby Tracker card for Home Assistant.
- * Served by the baby_tracker integration; no manual resource setup needed.
+ * Served by the baby_logger integration; no manual resource setup needed.
  *
- *   type: custom:baby-tracker-card
+ *   type: custom:baby-logger-card
  *   entry_id: <optional, defaults to the first baby>
  *   show_summary: true
  *   show_trends: true
@@ -20,7 +20,7 @@
  */
 
 const CARD_VERSION = "1.0.0";
-const DOMAIN = "baby_tracker";
+const DOMAIN = "baby_logger";
 
 const DIAPER = {
   wet: { label: "Wet", emoji: "💧", color: "#2196f3" },
@@ -501,7 +501,7 @@ class BabyTrackerCard extends HTMLElement {
   }
 
   static getConfigElement() {
-    return document.createElement("baby-tracker-card-editor");
+    return document.createElement("baby-logger-card-editor");
   }
 
   static getStubConfig() {
@@ -1075,16 +1075,16 @@ class BabyTrackerCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get("baby-tracker-card")) {
-  customElements.define("baby-tracker-card", BabyTrackerCard);
-  customElements.define("baby-tracker-card-editor", BabyTrackerCardEditor);
+if (!customElements.get("baby-logger-card")) {
+  customElements.define("baby-logger-card", BabyTrackerCard);
+  customElements.define("baby-logger-card-editor", BabyTrackerCardEditor);
   window.customCards = window.customCards || [];
   window.customCards.push({
-    type: "baby-tracker-card",
+    type: "baby-logger-card",
     name: "Baby Tracker",
     description: "Log diapers, feedings and sleep, with trends and a log.",
     preview: false,
     documentationURL: "https://github.com/Emilhaurum/baby-tracker",
   });
-  console.info(`%c BABY-TRACKER-CARD %c ${CARD_VERSION} `, "color:#fff;background:#5c6bc0;font-weight:700", "color:#5c6bc0");
+  console.info(`%c BABY-LOGGER-CARD %c ${CARD_VERSION} `, "color:#fff;background:#5c6bc0;font-weight:700", "color:#5c6bc0");
 }
