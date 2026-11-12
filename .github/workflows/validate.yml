@@ -22,7 +22,7 @@ jobs:
     name: Hassfest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
@@ -37,14 +37,14 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - run: pip install -r requirements_test.txt
       - run: ruff check .
       - run: ruff format --check .
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Check the card's JavaScript
@@ -58,7 +58,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -70,7 +70,7 @@ jobs:
           # The integration depends on the frontend; install the version Home Assistant pins.
           pip install "$(python -c "import json, pathlib, homeassistant; print(json.loads((pathlib.Path(homeassistant.__file__).parent / 'components/frontend/manifest.json').read_text())['requirements'][0])")"
       - run: pytest --cov --cov-report=term-missing --cov-report=xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
@@ -85,11 +85,11 @@ jobs:
         # The minimum version from hacs.json and the latest release.
         ha: ["2026.11.0", ""]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Install Home Assistant
@@ -122,7 +122,7 @@ jobs:
       - name: Show the Home Assistant log
         if: failure()
         run: tail -n 300 hass.log || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-${{ matrix.ha || 'latest' }}
