@@ -70,7 +70,7 @@ jobs:
           # The integration depends on the frontend; install the version Home Assistant pins.
           pip install "$(python -c "import json, pathlib, homeassistant; print(json.loads((pathlib.Path(homeassistant.__file__).parent / 'components/frontend/manifest.json').read_text())['requirements'][0])")"
       - run: pytest --cov --cov-report=term-missing --cov-report=xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
@@ -122,7 +122,7 @@ jobs:
       - name: Show the Home Assistant log
         if: failure()
         run: tail -n 300 hass.log || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-${{ matrix.ha || 'latest' }}
