@@ -82,6 +82,10 @@ await card.locator(".timeline").waitFor({ timeout: 30000 });
 const timelineLines = await card.locator(".timeline .tl-row:not(.tl-axis)").count();
 if (timelineLines !== 14) fail(`expected 14 timeline lines, got ${timelineLines}`);
 
+// The night sleep chart uses the integration's night window (22:00-09:00 by default).
+const nightSummary = await card.locator(".night-summary").textContent();
+if (!nightSummary.includes("Night 22:00–09:00")) fail(`night chart summary: ${nightSummary}`);
+
 const chip = async () => (await card.locator(".chip").first().textContent()).trim();
 const before = await chip();
 await card.locator('[data-action="diaper"][data-value="both"]').click();

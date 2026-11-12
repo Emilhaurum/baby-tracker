@@ -14,4 +14,7 @@ First release.
 - Bundled dashboard card with quick actions, summary, 7-day trends and an editable log.
 - Sleep timeline in the card: one line per day showing sleep and awake periods, with a
   configurable number of days, days per line (every day or averages) and start hour.
+- Night sleep chart in the card: hours asleep and awake within the night per night,
+  with averages and wake-ups; the night window follows the integration's setting or
+  can be set per card.
 - Logbook entries and `baby_tracker_event` events.

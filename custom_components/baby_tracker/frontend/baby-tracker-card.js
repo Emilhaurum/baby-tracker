@@ -13,6 +13,10 @@
  *   timeline_days: 14         days shown in the sleep timeline
  *   timeline_group: 1         days per line (1 = every day, 7 = weekly average, ...)
  *   timeline_start_hour: 0    hour of day each line starts at (e.g. 18 to keep nights together)
+ *   show_nights: true
+ *   night_days: 14            nights in the night sleep chart
+ *   night_start: "21:00"      optional; defaults to the integration's "Night starts" setting
+ *   night_end: "07:00"        optional; defaults to the integration's "Night ends" setting
  */
 
 const CARD_VERSION = "1.0.0";
@@ -49,7 +53,12 @@ const DEFAULTS = {
   timeline_days: 14,
   timeline_group: 1,
   timeline_start_hour: 0,
+  show_nights: true,
+  night_days: 14,
+  night_start: "",
+  night_end: "",
 };
+const NIGHTS_MAX = 366;
 const TIMELINE_MAX_DAYS = 3 * 366;
 const TIMELINE_BINS = 144; // 10 minute resolution for averaged lines
 
@@ -283,6 +292,138 @@ function timelineHtml(rows, settings, now) {
     <div class="legend">${legendItems.map(([l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join("")}${note}</div>`;
 }
 
+/** Minutes after midnight for "HH:MM" or "HH:MM:SS", or null. */
+export function parseClock(value) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(value ?? "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h < 24 && min < 60 ? h * 60 + min : null;
+}
+
+const formatClock = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/**
+ * Night window settings: the card's own night_start/night_end if both are valid
+ * and different, otherwise the integration's night settings.
+ */
+export function nightSettings(cfg, integration = {}) {
+  let start = parseClock(cfg.night_start);
+  let end = parseClock(cfg.night_end);
+  const custom = start !== null && end !== null && start !== end;
+  if (!custom) {
+    start = parseClock(integration.night_start) ?? 22 * 60;
+    end = parseClock(integration.night_end) ?? 9 * 60;
+  }
+  return { nights: clampInt(cfg.night_days, 1, NIGHTS_MAX, 14), start, end, custom };
+}
+
+function atMinutes(date, minutes) {
+  const d = new Date(date);
+  d.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return d;
+}
+
+/** Start of the most recent night that has begun. */
+function lastNightStart(settings, now) {
+  const start = atMinutes(now, settings.start);
+  if (start > now) start.setDate(start.getDate() - 1);
+  return start;
+}
+
+/** Oldest time the night chart needs sleeps from. */
+export function nightsRangeStart(settings, now) {
+  const start = lastNightStart(settings, now);
+  start.setDate(start.getDate() - (settings.nights - 1));
+  return start;
+}
+
+/**
+ * Sleep inside the night window for the last `settings.nights` nights, oldest first.
+ * `intervals` are sorted, non-overlapping [start, end] Date pairs.
+ */
+export function nightStats(intervals, settings, now = new Date()) {
+  const newest = lastNightStart(settings, now);
+  const nights = [];
+  for (let k = settings.nights - 1; k >= 0; k--) {
+    const start = new Date(newest);
+    start.setDate(start.getDate() - k);
+    const end = atMinutes(start, settings.end);
+    if (settings.end <= settings.start) end.setDate(end.getDate() + 1);
+    const until = end < now ? end : now;
+    const inside = intervals.filter(([s, e]) => e > start && s < until);
+    const asleep = overlapMs(inside, start, until);
+    // A wake-up: a sleep ends during the night and another starts before it's over.
+    let wakes = 0;
+    for (let i = 0; i < inside.length - 1; i++) {
+      if (inside[i][1] > start && inside[i][1] < until && inside[i + 1][0] < until) wakes++;
+    }
+    nights.push({
+      start,
+      end,
+      length: (end - start) / 3600000,
+      asleep: asleep / 3600000,
+      awake: (until - start - asleep) / 3600000,
+      wakes,
+      done: end <= now,
+    });
+  }
+  return nights;
+}
+
+function nightsHtml(nights, settings) {
+  const width = 300;
+  const height = 140;
+  const top = 14;
+  const bottom = 18;
+  const left = 22;
+  const plotW = width - left;
+  const maxH = Math.max(...nights.map((n) => n.length), 1);
+  const scale = (height - top - bottom) / maxH;
+  const slot = plotW / nights.length;
+  const barW = Math.max(2, Math.min(24, slot * 0.7));
+  const every = Math.ceil(nights.length / 14);
+  const y = (h) => height - bottom - h * scale;
+  let svg = "";
+  // Hour gridlines.
+  const step = maxH > 8 ? 4 : 2;
+  for (let h = 0; h <= maxH; h += step) {
+    svg += `<line x1="${left}" x2="${width}" y1="${y(h).toFixed(1)}" y2="${y(h).toFixed(1)}" class="grid"/>`;
+    svg += `<text x="${left - 4}" y="${(y(h) + 3).toFixed(1)}" class="yaxis">${h}</text>`;
+  }
+  nights.forEach((n, i) => {
+    const x = left + i * slot + (slot - barW) / 2;
+    const tip = `${n.start.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}: ${n.asleep.toFixed(1)} h asleep, ${n.awake.toFixed(1)} h awake, ${n.wakes} wake-up${n.wakes === 1 ? "" : "s"}${n.done ? "" : " (so far)"}`;
+    svg += `<g><title>${esc(tip)}</title>`;
+    if (n.awake > 0) {
+      svg += `<rect x="${x.toFixed(1)}" y="${y(n.asleep + n.awake).toFixed(1)}" width="${barW.toFixed(1)}" height="${(n.awake * scale).toFixed(1)}" rx="2" fill="var(--bt-awake)"/>`;
+    }
+    if (n.asleep > 0) {
+      svg += `<rect x="${x.toFixed(1)}" y="${y(n.asleep).toFixed(1)}" width="${barW.toFixed(1)}" height="${(n.asleep * scale).toFixed(1)}" rx="2" fill="var(--bt-sleep)"${n.done ? "" : ' opacity="0.6"'}/>`;
+    }
+    svg += `</g>`;
+    if (nights.length <= 14 && n.asleep > 0) {
+      svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y(n.asleep + n.awake) - 3).toFixed(1)}" class="value">${n.asleep.toFixed(1)}</text>`;
+    }
+    if (i % every === 0 || i === nights.length - 1) {
+      const label = nights.length <= 7 ? n.start.toLocaleDateString([], { weekday: "short" }) : String(n.start.getDate());
+      svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${height - 4}" class="axis">${esc(label)}</text>`;
+    }
+  });
+  const done = nights.filter((n) => n.done && n.asleep > 0);
+  let summary = `<span>No finished nights with sleep logged yet.</span>`;
+  if (done.length) {
+    const avg = done.reduce((t, n) => t + n.asleep, 0) / done.length;
+    const avgWakes = done.reduce((t, n) => t + n.wakes, 0) / done.length;
+    svg += `<line x1="${left}" x2="${width}" y1="${y(avg).toFixed(1)}" y2="${y(avg).toFixed(1)}" class="avg"/>`;
+    summary = `<span><b>${avg.toFixed(1)} h</b> asleep on average</span><span>${avgWakes.toFixed(1)} wake-ups per night</span>`;
+  }
+  const range = `${formatClock(settings.start)}–${formatClock(settings.end)}`;
+  return `<div class="night-summary">${summary}<span>Night ${range}</span></div>
+    <svg class="nights" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${svg}</svg>
+    <div class="legend"><span><i style="background:var(--bt-sleep)"></i>Asleep</span><span><i style="background:var(--bt-awake)"></i>Awake</span><span><i class="dash"></i>Average</span></div>`;
+}
+
 function describe(e) {
   if (e.kind === "diaper") {
     const d = DIAPER[e.diaper_type] || DIAPER.wet;
@@ -372,7 +513,7 @@ class BabyTrackerCard extends HTMLElement {
     const changed = this._config && (this._config.entry_id !== config.entry_id || this._config.days !== config.days);
     this._config = { ...DEFAULTS, ...config };
     if (changed) this._resubscribe();
-    else if (this._data && this._config.show_timeline) this._ensureSleeps(this._data);
+    else if (this._data && this._needsSleeps()) this._ensureSleeps(this._data);
     this._render();
   }
 
@@ -422,7 +563,7 @@ class BabyTrackerCard extends HTMLElement {
           if (generation !== this._generation) return;
           this._data = data;
           this._error = null;
-          if (this._config.show_timeline) this._ensureSleeps(data);
+          if (this._needsSleeps()) this._ensureSleeps(data);
           this._render();
         },
         { type: `${DOMAIN}/subscribe`, entry_id: entryId, days: Number(this._config.days) || 7 }
@@ -445,10 +586,18 @@ class BabyTrackerCard extends HTMLElement {
     }
   }
 
-  /** Load the sleeps the timeline needs; only again when the data or range changes. */
+  _needsSleeps() {
+    return Boolean(this._config.show_timeline || this._config.show_nights);
+  }
+
+  /** Load the sleeps the timeline and night chart need; again only when the data or range changes. */
   _ensureSleeps(d) {
-    const settings = timelineSettings(this._config);
-    const rangeStart = timelineRangeStart(settings, new Date());
+    const now = new Date();
+    const starts = [];
+    if (this._config.show_timeline) starts.push(timelineRangeStart(timelineSettings(this._config), now));
+    if (this._config.show_nights) starts.push(nightsRangeStart(nightSettings(this._config, d.settings), now));
+    if (!starts.length) return;
+    const rangeStart = new Date(Math.min(...starts));
     const key = `${d.entry_id}|${d.revision}|${rangeStart.toISOString()}`;
     if (key === this._sleepsKey || key === this._sleepsLoading) return;
     this._sleepsLoading = key;
@@ -704,18 +853,27 @@ class BabyTrackerCard extends HTMLElement {
         </div>`;
     }
 
+    let intervals = null;
+    if (this._sleeps) {
+      intervals = [...this._sleeps];
+      if (d.sleep_start) intervals.push([new Date(d.sleep_start), now]);
+    }
+    const pending = this._sleepsError
+      ? `<div class="message error">${esc(this._sleepsError)}</div>`
+      : `<div class="message">Loading…</div>`;
+
+    if (cfg.show_nights) {
+      const settings = nightSettings(cfg, d.settings);
+      html += `
+        <div class="section">
+          <div class="section-title">Night sleep</div>
+          <div class="chart">${intervals ? nightsHtml(nightStats(intervals, settings, now), settings) : pending}</div>
+        </div>`;
+    }
+
     if (cfg.show_timeline) {
       const settings = timelineSettings(cfg);
-      let content;
-      if (this._sleeps) {
-        const intervals = [...this._sleeps];
-        if (d.sleep_start) intervals.push([new Date(d.sleep_start), now]);
-        content = timelineHtml(timelineRows(intervals, settings, now), settings, now);
-      } else if (this._sleepsError) {
-        content = `<div class="message error">${esc(this._sleepsError)}</div>`;
-      } else {
-        content = `<div class="message">Loading…</div>`;
-      }
+      const content = intervals ? timelineHtml(timelineRows(intervals, settings, now), settings, now) : pending;
       const title =
         settings.group === 1 ? "Sleep timeline" : `Sleep timeline (${settings.group}-day averages)`;
       html += `
@@ -822,6 +980,14 @@ const STYLE = `
   .tl-ticks span:first-child { transform: none; }
   .tl-ticks span:last-child { transform: translateX(-100%); }
   .tl-note { color: var(--secondary-text-color); }
+  .night-summary { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.85em; color: var(--secondary-text-color); padding: 4px 0; }
+  .night-summary b { color: var(--primary-text-color); font-size: 1.15em; }
+  .night-summary span:last-child { margin-left: auto; }
+  .chart svg.nights { max-height: 220px; }
+  .chart line.grid { stroke: var(--divider-color); stroke-width: 0.5; }
+  .chart line.avg { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.7; }
+  .chart text.yaxis { text-anchor: end; }
+  .legend i.dash { background: none; border-top: 2px dashed var(--primary-text-color); height: 0; width: 14px; opacity: 0.7; vertical-align: 3px; }
   .log { list-style: none; margin: 0; padding: 0; }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .log li.day { border: none; padding-top: 10px; font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -872,7 +1038,8 @@ class BabyTrackerCardEditor extends HTMLElement {
       <style>
         .bt-editor { display: grid; gap: 12px; padding: 8px 0; }
         .bt-editor label { display: flex; align-items: center; gap: 8px; }
-        .bt-editor select, .bt-editor input[type=number] { padding: 6px; font: inherit; }
+        .bt-editor select, .bt-editor input[type=number], .bt-editor input[type=time] { padding: 6px; font: inherit; }
+        .bt-editor small { color: var(--secondary-text-color); margin-top: -8px; }
       </style>
       <div class="bt-editor">
         <label>Baby <select data-key="entry_id">${options}</select></label>
@@ -889,6 +1056,10 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>Timeline lines start at <select data-key="timeline_start_hour" data-number>
           ${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${Number(c.timeline_start_hour) === h ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}
         </select></label>
+        ${check("show_nights", "Show night sleep")}
+        <label>Nights shown <input type="number" min="1" max="${NIGHTS_MAX}" data-key="night_days" value="${esc(c.night_days)}"></label>
+        <label>Night from <input type="time" data-key="night_start" value="${esc(c.night_start)}"> to <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
+        <small>Leave the night times empty to use the integration's Night starts / Night ends settings.</small>
         ${check("show_log", "Show log")}
         <label>Log entries <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
         <label>Days of history <input type="number" min="1" max="31" data-key="days" value="${esc(c.days)}"></label>

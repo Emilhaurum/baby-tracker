@@ -28,8 +28,11 @@ Everything is stored locally in Home Assistant.
   slept and was awake. Show as many days as you like, and either every day or an
   average over several days per line (e.g. weekly), which shades each time of day by
   how often the baby is asleep then.
-- **Dashboard card** with quick actions, a summary, 7-day trends, the sleep timeline
-  and an editable log.
+- **Night sleep chart**: hours asleep and awake within the night for each night, with
+  the average and wake-ups per night. The night window is the integration's *Night
+  starts* / *Night ends* setting, or one you set on the card.
+- **Dashboard card** with quick actions, a summary, 7-day trends, night sleep, the
+  sleep timeline and an editable log.
   It is served by the integration, so there is nothing else to install.
 - **Several babies**: add the integration once per baby.
 - Logbook entries and a `baby_tracker_event` event for every action, for use in automations.
@@ -74,6 +77,9 @@ type: custom:baby-tracker-card
 | `entry_id` | first baby | Which baby to show. The visual editor lets you pick by name. |
 | `show_summary` | `true` | Show last night and daytime sleep. |
 | `show_trends` | `true` | Show the diaper, feeding and sleep charts. |
+| `show_nights` | `true` | Show the night sleep chart. |
+| `night_days` | `14` | Nights in the night sleep chart (up to 366). |
+| `night_start` / `night_end` | integration's setting | Night window for the chart, e.g. `"20:00"` and `"06:00"`. Leave out to use the *Night starts* / *Night ends* settings of the baby. |
 | `show_timeline` | `true` | Show the sleep timeline. |
 | `timeline_days` | `14` | Days covered by the sleep timeline (up to 1098). |
 | `timeline_group` | `1` | Days per timeline line: `1` shows every day, a larger number (e.g. `7`) averages that many days per line. |
@@ -83,6 +89,20 @@ type: custom:baby-tracker-card
 | `days` | `7` | Days shown in the charts (1–31). |
 
 Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to delete it.
+
+A card with the last 30 nights, counting the night as 20:00–06:00:
+
+```yaml
+type: custom:baby-tracker-card
+show_trends: false
+show_timeline: false
+show_log: false
+night_days: 30
+night_start: "20:00"
+night_end: "06:00"
+```
+
+![Night sleep chart](docs/night-sleep.png)
 
 A card showing four weeks of sleep as weekly averages, with lines running from 18:00 to
 18:00 so nights aren't split at midnight:
