@@ -94,9 +94,12 @@ jobs:
           node-version: 22
       - name: Install Home Assistant
         run: |
-          pip install "homeassistant${{ matrix.ha && format('=={0}', matrix.ha) || '' }}"
+          # Home Assistant refuses to start outside a virtual environment.
+          python -m venv venv
+          echo "$PWD/venv/bin" >> "$GITHUB_PATH"
+          venv/bin/pip install "homeassistant${{ matrix.ha && format('=={0}', matrix.ha) || '' }}"
           # Pre-install the frontend so the first start doesn't have to.
-          pip install "$(python -c "import json, pathlib, homeassistant; print(json.loads((pathlib.Path(homeassistant.__file__).parent / 'components/frontend/manifest.json').read_text())['requirements'][0])")"
+          venv/bin/pip install "$(venv/bin/python -c "import json, pathlib, homeassistant; print(json.loads((pathlib.Path(homeassistant.__file__).parent / 'components/frontend/manifest.json').read_text())['requirements'][0])")"
       - name: Install Playwright
         run: |
           npm init -y >/dev/null
