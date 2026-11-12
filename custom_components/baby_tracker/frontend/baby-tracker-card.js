@@ -912,7 +912,7 @@ class BabyTrackerCard extends HTMLElement {
 const STYLE = `
   :host { display: block; }
   ha-card { padding: 16px; overflow: hidden; container: bt-card / inline-size;
-    --bt-sleep: ${SLEEP_COLORS.night}; --bt-awake: color-mix(in srgb, ${SLEEP_COLORS.day} 30%, var(--card-background-color)); }
+    --bt-sleep: ${SLEEP_COLORS.night}; --bt-awake: color-mix(in srgb, ${SLEEP_COLORS.day} 55%, var(--card-background-color)); }
   ha-icon { --mdc-icon-size: 18px; }
   .message { padding: 8px 0; color: var(--secondary-text-color); }
   .message.error { color: var(--error-color, #db4437); }
