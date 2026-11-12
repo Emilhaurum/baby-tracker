@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/custom_components/baby_tracker/brand/icon.png" alt="Baby Tracker icon" width="128">
+</p>
+
 # Baby Tracker for Home Assistant
 
 [![HACS](https://img.shields.io/badge/HACS-Integration-41BDF5.svg)](https://hacs.xyz)
@@ -10,7 +14,7 @@ Everything is stored locally in Home Assistant.
 
 | Light | Dark |
 | --- | --- |
-| ![Baby Tracker card, light theme](docs/card-light.png) | ![Baby Tracker card, dark theme](docs/card-dark.png) |
+| ![Baby Tracker card, light theme](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/card-light.png) | ![Baby Tracker card, dark theme](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/card-dark.png) |
 
 ## Features
 
@@ -102,7 +106,7 @@ night_start: "20:00"
 night_end: "06:00"
 ```
 
-![Night sleep chart](docs/night-sleep.png)
+![Night sleep chart](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/night-sleep.png)
 
 A card showing four weeks of sleep as weekly averages, with lines running from 18:00 to
 18:00 so nights aren't split at midnight:
@@ -116,7 +120,7 @@ timeline_group: 7
 timeline_start_hour: 18
 ```
 
-![Sleep timeline with weekly averages](docs/timeline-weekly.png)
+![Sleep timeline with weekly averages](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/timeline-weekly.png)
 
 ## Entities
 
