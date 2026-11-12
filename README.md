@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/custom_components/baby_logger/brand/icon.png" alt="Baby Tracker icon" width="128">
+</p>
+
 # Baby Tracker for Home Assistant
 
 [![HACS](https://img.shields.io/badge/HACS-Integration-41BDF5.svg)](https://hacs.xyz)
@@ -10,7 +14,7 @@ Everything is stored locally in Home Assistant.
 
 | Light | Dark |
 | --- | --- |
-| ![Baby Tracker card, light theme](docs/card-light.png) | ![Baby Tracker card, dark theme](docs/card-dark.png) |
+| ![Baby Tracker card, light theme](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/card-light.png) | ![Baby Tracker card, dark theme](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/card-dark.png) |
 
 ## Features
 
@@ -35,7 +39,7 @@ Everything is stored locally in Home Assistant.
   sleep timeline and an editable log.
   It is served by the integration, so there is nothing else to install.
 - **Several babies**: add the integration once per baby.
-- Logbook entries and a `baby_tracker_event` event for every action, for use in automations.
+- Logbook entries and a `baby_logger_event` event for every action, for use in automations.
 
 ## Installation
 
@@ -50,15 +54,15 @@ Everything is stored locally in Home Assistant.
 
 ### Manual
 
-1. Download `baby_tracker.zip` from the [latest release](https://github.com/Emilhaurum/baby-tracker/releases/latest).
-2. Extract it into `config/custom_components/baby_tracker/`.
+1. Download `baby_logger.zip` from the [latest release](https://github.com/Emilhaurum/baby-tracker/releases/latest).
+2. Extract it into `config/custom_components/baby_logger/`.
 3. Restart Home Assistant.
 
 Requires Home Assistant 2026.11 or newer.
 
 ## Setup
 
-[![Open your Home Assistant instance and start setting up Baby Tracker.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=baby_tracker)
+[![Open your Home Assistant instance and start setting up Baby Tracker.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=baby_logger)
 
 Go to **Settings → Devices & services → Add integration → Baby Tracker** and enter the
 baby's name. Repeat for each baby. To rename a baby later, choose **Reconfigure** on the
@@ -69,7 +73,7 @@ integration entry.
 Edit a dashboard, add a card and pick **Baby Tracker**, or add it in YAML:
 
 ```yaml
-type: custom:baby-tracker-card
+type: custom:baby-logger-card
 ```
 
 | Option | Default | Description |
@@ -93,7 +97,7 @@ Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to dele
 A card with the last 30 nights, counting the night as 20:00–06:00:
 
 ```yaml
-type: custom:baby-tracker-card
+type: custom:baby-logger-card
 show_trends: false
 show_timeline: false
 show_log: false
@@ -102,13 +106,13 @@ night_start: "20:00"
 night_end: "06:00"
 ```
 
-![Night sleep chart](docs/night-sleep.png)
+![Night sleep chart](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/night-sleep.png)
 
 A card showing four weeks of sleep as weekly averages, with lines running from 18:00 to
 18:00 so nights aren't split at midnight:
 
 ```yaml
-type: custom:baby-tracker-card
+type: custom:baby-logger-card
 show_trends: false
 show_log: false
 timeline_days: 28
@@ -116,7 +120,7 @@ timeline_group: 7
 timeline_start_hour: 18
 ```
 
-![Sleep timeline with weekly averages](docs/timeline-weekly.png)
+![Sleep timeline with weekly averages](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/timeline-weekly.png)
 
 ## Entities
 
@@ -154,18 +158,18 @@ and defaults to now, so you can log things after the fact.
 
 | Action | Fields |
 | --- | --- |
-| `baby_tracker.log_diaper` | `type` (`wet`, `dirty`, `both`), `time` |
-| `baby_tracker.log_feeding` | `side` (`left`, `right`, `bottle`), `amount_ml`, `time` |
-| `baby_tracker.start_sleep` | `time` |
-| `baby_tracker.end_sleep` | `time` |
-| `baby_tracker.add_sleep` | `start`, `end` |
-| `baby_tracker.undo` | |
-| `baby_tracker.delete_event` | `event_id` |
+| `baby_logger.log_diaper` | `type` (`wet`, `dirty`, `both`), `time` |
+| `baby_logger.log_feeding` | `side` (`left`, `right`, `bottle`), `amount_ml`, `time` |
+| `baby_logger.start_sleep` | `time` |
+| `baby_logger.end_sleep` | `time` |
+| `baby_logger.add_sleep` | `start`, `end` |
+| `baby_logger.undo` | |
+| `baby_logger.delete_event` | `event_id` |
 
 The logging actions return the created entry. For example:
 
 ```yaml
-action: baby_tracker.log_feeding
+action: baby_logger.log_feeding
 data:
   config_entry_id: 01JC0EXAMPLE
   side: bottle
@@ -174,14 +178,14 @@ data:
 
 ### Automation example
 
-Every action fires a `baby_tracker_event` with `config_entry_id`, `name`, `action`
+Every action fires a `baby_logger_event` with `config_entry_id`, `name`, `action`
 (`diaper`, `feeding`, `sleep`, `wake`, `undo`, `delete`, `add_sleep`, `update_sleep`)
 and details such as `type`, `side` or `minutes`.
 
 ```yaml
 triggers:
   - trigger: event
-    event_type: baby_tracker_event
+    event_type: baby_logger_event
     event_data:
       action: wake
 actions:
@@ -206,7 +210,7 @@ actions:
 
 ## Data and privacy
 
-Everything is stored in Home Assistant's `.storage` folder (`baby_tracker.<entry id>`) and
+Everything is stored in Home Assistant's `.storage` folder (`baby_logger.<entry id>`) and
 is included in Home Assistant backups. Removing a baby deletes its history. Nothing is
 sent anywhere. Diagnostics leave out the baby's name.
 
@@ -234,7 +238,7 @@ and releases, on the minimum supported and the latest Home Assistant release.
 
 The release workflow checks that the tag matches the version in the manifest, card and
 `pyproject.toml`, runs hassfest, HACS validation, linting, the tests and the end-to-end
-tests, then publishes a GitHub release with `baby_tracker.zip` for HACS.
+tests, then publishes a GitHub release with `baby_logger.zip` for HACS.
 
 ## License
 

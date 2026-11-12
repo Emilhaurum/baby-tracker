@@ -43,7 +43,7 @@ for (const scheme of ["light", "dark"]) {
   });
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(`${base}/dashboard-baby/baby`);
-  const card = page.locator("baby-tracker-card");
+  const card = page.locator("baby-logger-card");
   await card.waitFor({ timeout: 60000 });
   // Wait for the subscription to deliver data.
   await card.locator(".tiles").waitFor({ timeout: 30000 });
@@ -74,7 +74,7 @@ await context.addInitScript(
 const page = await context.newPage();
 page.on("pageerror", (e) => errors.push(String(e)));
 await page.goto(`${base}/dashboard-baby/baby`);
-const card = page.locator("baby-tracker-card");
+const card = page.locator("baby-logger-card");
 await card.locator(".tiles").waitFor({ timeout: 60000 });
 
 // The sleep timeline shows one line per day (14 by default).
@@ -113,7 +113,7 @@ await card.screenshot({ path: `${outDir}/card-mobile.png` });
 
 // The card editor loads.
 await page.evaluate(async () => {
-  const el = await customElements.get("baby-tracker-card").getConfigElement();
+  const el = await customElements.get("baby-logger-card").getConfigElement();
   document.body.appendChild(el);
 });
 

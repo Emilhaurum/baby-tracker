@@ -19,10 +19,10 @@ ruff check .
 ruff format --check .
 
 step "versions"
-python scripts/set_version.py --check "$(python -c "import json; print(json.load(open('custom_components/baby_tracker/manifest.json'))['version'])")"
+python scripts/set_version.py --check "$(python -c "import json; print(json.load(open('custom_components/baby_logger/manifest.json'))['version'])")"
 
 step "card"
-node --check custom_components/baby_tracker/frontend/baby-tracker-card.js
+node --check custom_components/baby_logger/frontend/baby-logger-card.js
 TZ=Europe/Copenhagen node --test tests/js/*.test.mjs
 
 step "unit tests"
@@ -40,14 +40,14 @@ if [[ "${1:-}" == "--e2e" ]]; then
   }
   trap cleanup EXIT
   mkdir -p "$work/config/custom_components"
-  cp -r custom_components/baby_tracker "$work/config/custom_components/"
+  cp -r custom_components/baby_logger "$work/config/custom_components/"
   printf 'default_config:\nlogger:\n  default: warning\n' > "$work/config/configuration.yaml"
   hass -c "$work/config" > "$work/hass.log" 2>&1 &
   hass_pid=$!
   python tests/e2e/setup_instance.py http://localhost:8123 > "$work/tokens.json"
   node tests/e2e/card.mjs http://localhost:8123 "$work/tokens.json" "$work/output"
-  if grep -E "ERROR.*baby_tracker|Traceback.*baby_tracker" "$work/hass.log"; then
-    echo "Errors from baby_tracker in the Home Assistant log" >&2
+  if grep -E "ERROR.*baby_logger|Traceback.*baby_logger" "$work/hass.log"; then
+    echo "Errors from baby_logger in the Home Assistant log" >&2
     exit 1
   fi
 fi

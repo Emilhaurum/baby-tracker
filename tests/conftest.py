@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.baby_tracker.const import DOMAIN
+from custom_components.baby_logger.const import DOMAIN
 
 
 @pytest.fixture(autouse=True)
@@ -37,5 +37,5 @@ async def entry(hass: HomeAssistant, mock_entry: MockConfigEntry) -> MockConfigE
 @pytest.fixture
 def no_platforms() -> Generator[None]:
     """Skip entity platforms (for tests of the tracker only)."""
-    with patch("custom_components.baby_tracker.PLATFORMS", []):
+    with patch("custom_components.baby_logger.PLATFORMS", []):
         yield

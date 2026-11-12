@@ -6,7 +6,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.baby_tracker.const import DOMAIN
+from custom_components.baby_logger.const import DOMAIN
 
 ENTRY_ID = "alex_entry"
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
-from custom_components.baby_tracker.stats import average, night_day_stats, overlap_seconds
+from custom_components.baby_logger.stats import average, night_day_stats, overlap_seconds
 
 TZ = ZoneInfo("Europe/Copenhagen")
 

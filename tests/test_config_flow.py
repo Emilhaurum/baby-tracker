@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.baby_tracker.const import DOMAIN
+from custom_components.baby_logger.const import DOMAIN
 
 
 async def test_user_flow(hass: HomeAssistant) -> None:

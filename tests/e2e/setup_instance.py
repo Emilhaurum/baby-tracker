@@ -56,7 +56,7 @@ async def main(base: str) -> None:
 
         # Add the baby through the config flow.
         async with session.post(
-            f"{base}/api/config/config_entries/flow", json={"handler": "baby_tracker"}, headers=headers
+            f"{base}/api/config/config_entries/flow", json={"handler": "baby_logger"}, headers=headers
         ) as resp:
             flow = await resp.json()
             assert flow["type"] == "form", flow
@@ -70,7 +70,7 @@ async def main(base: str) -> None:
 
         async def service(name: str, **data: object) -> dict:
             async with session.post(
-                f"{base}/api/services/baby_tracker/{name}?return_response",
+                f"{base}/api/services/baby_logger/{name}?return_response",
                 json={"config_entry_id": entry_id, **data},
                 headers=headers,
             ) as resp:
@@ -100,7 +100,7 @@ async def main(base: str) -> None:
         # The card is loaded on every page without a manual resource.
         async with session.get(f"{base}/") as resp:
             html = await resp.text()
-            assert "/baby_tracker_static/baby-tracker-card.js?v=" in html, "card not registered"
+            assert "/baby_logger_static/baby-logger-card.js?v=" in html, "card not registered"
 
         # Store a dashboard using the card.
         async with session.ws_connect(f"{base}/api/websocket") as ws:
@@ -125,13 +125,13 @@ async def main(base: str) -> None:
                     "url_path": "dashboard-baby",
                     "config": {
                         "views": [
-                            {"title": "Baby", "path": "baby", "cards": [{"type": "custom:baby-tracker-card"}]}
+                            {"title": "Baby", "path": "baby", "cards": [{"type": "custom:baby-logger-card"}]}
                         ]
                     },
                 }
             )
             assert (await ws.receive_json())["success"]
-            await ws.send_json({"id": 3, "type": "baby_tracker/babies"})
+            await ws.send_json({"id": 3, "type": "baby_logger/babies"})
             babies = (await ws.receive_json())["result"]
             assert babies == [{"entry_id": entry_id, "name": "Alex"}], babies
 

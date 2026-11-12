@@ -1,5 +1,5 @@
 {
-  "domain": "baby_tracker",
+  "domain": "baby_logger",
   "name": "Baby Tracker",
   "codeowners": ["@Emilhaurum"],
   "config_flow": true,

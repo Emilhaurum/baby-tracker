@@ -12,7 +12,7 @@ asyncio_default_fixture_loop_scope = "function"
 addopts = "-p no:cacheprovider"
 
 [tool.coverage.run]
-source = ["custom_components.baby_tracker"]
+source = ["custom_components.baby_logger"]
 branch = true
 
 [tool.coverage.report]

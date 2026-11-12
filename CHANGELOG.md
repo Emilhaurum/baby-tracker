@@ -17,4 +17,4 @@ First release.
 - Night sleep chart in the card: hours asleep and awake within the night per night,
   with averages and wake-ups; the night window follows the integration's setting or
   can be set per card.
-- Logbook entries and `baby_tracker_event` events.
+- Logbook entries and `baby_logger_event` events.

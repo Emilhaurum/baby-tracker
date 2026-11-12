@@ -13,7 +13,7 @@ from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.baby_tracker.const import DOMAIN
+from custom_components.baby_logger.const import DOMAIN
 
 from .helpers import attrs, call, state
 
@@ -22,7 +22,7 @@ async def test_subscription_survives_reload(
     hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client
 ) -> None:
     client = await hass_ws_client(hass)
-    await client.send_json_auto_id({"type": "baby_tracker/subscribe", "entry_id": entry.entry_id})
+    await client.send_json_auto_id({"type": "baby_logger/subscribe", "entry_id": entry.entry_id})
     assert (await client.receive_json())["success"]
     await client.receive_json()  # initial snapshot
 

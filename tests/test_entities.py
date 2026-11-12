@@ -13,8 +13,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.components.diagnostics import get_diagnostics_for_config_entry
 
-from custom_components.baby_tracker.const import DOMAIN, EVENT_BABY_TRACKER
-from custom_components.baby_tracker.logbook import async_describe_events, describe
+from custom_components.baby_logger.const import DOMAIN, EVENT_BABY_TRACKER
+from custom_components.baby_logger.logbook import async_describe_events, describe
 
 from .helpers import call, state
 
@@ -151,11 +151,11 @@ async def test_calendar_state_while_sleeping(hass: HomeAssistant, entry: MockCon
 
 async def test_websocket(hass: HomeAssistant, entry: MockConfigEntry, hass_ws_client) -> None:
     client = await hass_ws_client(hass)
-    await client.send_json_auto_id({"type": "baby_tracker/babies"})
+    await client.send_json_auto_id({"type": "baby_logger/babies"})
     msg = await client.receive_json()
     assert msg["result"] == [{"entry_id": entry.entry_id, "name": "Alex"}]
 
-    await client.send_json_auto_id({"type": "baby_tracker/subscribe", "entry_id": entry.entry_id, "days": 3})
+    await client.send_json_auto_id({"type": "baby_logger/subscribe", "entry_id": entry.entry_id, "days": 3})
     assert (await client.receive_json())["success"]
     snapshot = (await client.receive_json())["event"]
     assert snapshot["name"] == "Alex"
@@ -169,7 +169,7 @@ async def test_websocket(hass: HomeAssistant, entry: MockConfigEntry, hass_ws_cl
     assert snapshot["last_diaper"]["diaper_type"] == "dirty"
     assert len(snapshot["events"]) == 1
 
-    await client.send_json_auto_id({"type": "baby_tracker/subscribe", "entry_id": "missing"})
+    await client.send_json_auto_id({"type": "baby_logger/subscribe", "entry_id": "missing"})
     msg = await client.receive_json()
     assert not msg["success"]
     assert msg["error"]["code"] == "not_found"
@@ -239,7 +239,7 @@ async def test_websocket_sleeps(hass: HomeAssistant, entry: MockConfigEntry, has
     client = await hass_ws_client(hass)
     await client.send_json_auto_id(
         {
-            "type": "baby_tracker/sleeps",
+            "type": "baby_logger/sleeps",
             "entry_id": entry.entry_id,
             "start": (now - timedelta(days=7)).isoformat(),
         }
@@ -253,13 +253,13 @@ async def test_websocket_sleeps(hass: HomeAssistant, entry: MockConfigEntry, has
     assert end - start == timedelta(hours=3)
 
     await client.send_json_auto_id(
-        {"type": "baby_tracker/sleeps", "entry_id": "missing", "start": now.isoformat()}
+        {"type": "baby_logger/sleeps", "entry_id": "missing", "start": now.isoformat()}
     )
     msg = await client.receive_json()
     assert msg["error"]["code"] == "not_found"
 
     await client.send_json_auto_id(
-        {"type": "baby_tracker/sleeps", "entry_id": entry.entry_id, "start": "nope"}
+        {"type": "baby_logger/sleeps", "entry_id": entry.entry_id, "start": "nope"}
     )
     msg = await client.receive_json()
     assert not msg["success"]
