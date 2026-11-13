@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- Add the `health_wellbeing` category to the integration manifest (used by Home Assistant
+  and HACS for browsing; removes the HACS validation warning).
+
 ## 1.0.0
 
 First release.

@@ -1,13 +1,22 @@
 {
   "domain": "baby_logger",
   "name": "Baby Tracker",
-  "codeowners": ["@Emilhaurum"],
+  "categories": [
+    "health_wellbeing"
+  ],
+  "codeowners": [
+    "@Emilhaurum"
+  ],
   "config_flow": true,
-  "dependencies": ["frontend", "http", "websocket_api"],
+  "dependencies": [
+    "frontend",
+    "http",
+    "websocket_api"
+  ],
   "documentation": "https://github.com/Emilhaurum/baby-tracker",
   "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/Emilhaurum/baby-tracker/issues",
   "requirements": [],
-  "version": "1.0.0"
+  "version": "1.0.1"
 }
