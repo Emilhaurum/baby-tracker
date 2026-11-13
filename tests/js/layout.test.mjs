@@ -39,14 +39,33 @@ test("parts are shown in the given order and the show_* flags are ignored", () =
 });
 
 test("the undo banner goes above the first part with buttons when not listed", () => {
-  assert.deepEqual(resolveParts({ parts: ["summary", "buttons", "tiles"] }), ["summary", "undo", "buttons", "tiles"]);
-  assert.deepEqual(resolveParts({ parts: ["header", "tiles", "buttons"] }), ["header", "undo", "tiles", "buttons"]);
+  const noUndoButton = { buttons: ["sleep", "diaper_wet"] };
+  assert.deepEqual(resolveParts({ ...noUndoButton, parts: ["summary", "buttons", "tiles"] }), [
+    "summary",
+    "undo",
+    "buttons",
+    "tiles",
+  ]);
+  assert.deepEqual(resolveParts({ parts: ["header", "tiles", "summary"] }), ["header", "undo", "tiles", "summary"]);
   // Deleting a log entry can be undone too.
   assert.deepEqual(resolveParts({ parts: ["timeline", "log"] }), ["timeline", "undo", "log"]);
   // Nothing to undo from.
   assert.deepEqual(resolveParts({ parts: ["summary", "trends"] }), ["summary", "trends"]);
   // An explicit position is kept.
   assert.deepEqual(resolveParts({ parts: ["buttons", "summary", "undo"] }), ["buttons", "summary", "undo"]);
+});
+
+test("no automatic undo banner when the quick buttons have an Undo button", () => {
+  // The default buttons include Undo.
+  assert.deepEqual(resolveParts({ parts: ["buttons", "summary"] }), ["buttons", "summary"]);
+  assert.deepEqual(resolveParts({ parts: ["tiles", "buttons"], buttons: ["diaper_wet", { action: "undo" }] }), [
+    "tiles",
+    "buttons",
+  ]);
+  // Listed explicitly, the banner is still shown.
+  assert.deepEqual(resolveParts({ parts: ["undo", "buttons"] }), ["undo", "buttons"]);
+  // An Undo button in a list that isn't shown doesn't count.
+  assert.deepEqual(resolveParts({ parts: ["tiles"], buttons: ["undo"] }), ["undo", "tiles"]);
 });
 
 test("default quick buttons", () => {

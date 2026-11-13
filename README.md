@@ -116,7 +116,8 @@ Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to dele
 
 Without `parts` the card shows `header`, `undo` and `tiles`, followed by the parts turned
 on with the `show_*` options, so existing cards look the same. If `undo` isn't listed, the
-banner appears above the first `buttons` or `tiles` part, so an action can always be undone.
+banner appears above the first `buttons` or `tiles` part, so an action can always be undone,
+unless the quick buttons have their own Undo button.
 In the visual editor, tick the parts to show and use the arrows to order them.
 
 ### Quick buttons

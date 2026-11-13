@@ -171,13 +171,13 @@ test("phone layout: quick buttons and summary", async () => {
     ["log_feeding", { config_entry_id: "e1", side: "bottle", amount_ml: 90 }],
   ]);
 
-  // After an action the undo button and banner show up.
+  // After an action the Undo button shows up (the banner isn't added: it would be a second undo).
   await page.evaluate(
     (snap) => window.hass.push(snap),
     snapshot({ sleeping: true, sleep_start: iso("14:55"), undo: { action: "sleep", expires: iso("15:00:30") } })
   );
   await page.waitForTimeout(20);
-  assert.deepEqual(await partsOf(page), ["undo", "buttons", "summary"]);
+  assert.deepEqual(await partsOf(page), ["buttons", "summary"]);
   assert.equal(await card.locator(".qb.wide.on .qb-name").textContent(), "Sleeping 😴");
   assert.match(await card.locator(".qb.wide.on .qb-sub").textContent(), /^Asleep for 0h 05m — tap to wake$/);
   const undo = card.locator('.qb[data-action="undo"]');
@@ -187,6 +187,17 @@ test("phone layout: quick buttons and summary", async () => {
   await undo.click();
   assert.deepEqual((await calls(page)).at(-1), ["undo", { config_entry_id: "e1" }]);
   assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("undo banner above the buttons when they have no Undo button", async () => {
+  const { page, context } = await mount({
+    config: { parts: ["summary", "buttons"], buttons: ["sleep", "diaper_wet", "diaper_dirty"] },
+    snap: snapshot({ undo: { action: "diaper", expires: iso("15:00:20") } }),
+  });
+  assert.deepEqual(await partsOf(page), ["summary", "undo", "buttons"]);
+  await page.locator('baby-logger-card .undo [data-action="undo"]').click();
+  assert.deepEqual((await calls(page)).at(-1), ["undo", { config_entry_id: "e1" }]);
   await context.close();
 });
 
@@ -203,7 +214,8 @@ test("full layout in the given order", async () => {
     snap: snapshot({ undo: { action: "feeding", expires: iso("15:00:20") } }),
     width: 700,
   });
-  assert.deepEqual(await partsOf(page), ["header", "timeline", "undo", "buttons", "nights", "trends", "log"]);
+  assert.deepEqual(await partsOf(page), ["header", "timeline", "buttons", "nights", "trends", "log"]);
+  assert.equal(await page.locator('baby-logger-card .qb[data-action="undo"]').count(), 1);
   assert.equal((await wsTypes(page)).filter((t) => t === "baby_logger/sleeps").length, 1);
   await page.waitForTimeout(50);
   await shot(page, "full");

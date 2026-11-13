@@ -490,7 +490,8 @@ function nightsHtml(nights, settings) {
  * The parts to render, in order. Without a `parts` option this is what the card
  * has always shown, derived from the show_* flags. The undo banner is added above
  * the first part with buttons (or the log, whose delete can be undone) when it
- * isn't listed, so an action can always be undone.
+ * isn't listed, so an action can always be undone. It is left out when the quick
+ * buttons already have an Undo button.
  */
 export function resolveParts(cfg) {
   let parts;
@@ -508,7 +509,8 @@ export function resolveParts(cfg) {
       if (cfg[flag] ?? DEFAULTS[flag]) parts.push(part);
     }
   }
-  if (!parts.includes("undo")) {
+  const undoButton = parts.includes("buttons") && buttonList(cfg).some((b) => b.action === "undo");
+  if (!parts.includes("undo") && !undoButton) {
     const at = parts.findIndex((p) => p === "buttons" || p === "tiles");
     const index = at >= 0 ? at : parts.indexOf("log");
     if (index >= 0) parts.splice(index, 0, "undo");
@@ -1361,7 +1363,7 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>Baby <select data-key="entry_id">${options}</select></label>
         <h3>Parts</h3>
         <div class="list">${this._listRows(this._parts, "parts")}</div>
-        <small>Hidden undo banner: it still appears above the first buttons / tiles part when an action can be undone.</small>
+        <small>Hidden undo banner: it still appears above the first buttons / tiles part when an action can be undone, unless the quick buttons have an Undo button.</small>
         <h3>Quick buttons</h3>
         <div class="list">${this._listRows(this._buttons, "buttons")}</div>
         <small>Name, icon and colour are optional. Colours can be Home Assistant names (e.g. light-blue) or CSS colours.</small>
