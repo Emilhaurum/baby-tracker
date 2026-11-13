@@ -75,3 +75,73 @@ delete_event:
       required: true
       selector:
         text:
+
+log_growth:
+  fields:
+    config_entry_id: *entry
+    weight:
+      selector:
+        number:
+          min: 0
+          max: 330
+          step: 0.01
+          mode: box
+    length:
+      selector:
+        number:
+          min: 0
+          max: 220
+          step: 0.1
+          mode: box
+    units:
+      default: metric
+      selector:
+        select:
+          translation_key: units
+          options:
+            - metric
+            - imperial
+    date: &date
+      selector:
+        date:
+    note: &note
+      selector:
+        text:
+
+delete_growth:
+  fields:
+    config_entry_id: *entry
+    event_id:
+      required: true
+      selector:
+        text:
+
+set_milestone:
+  fields:
+    config_entry_id: *entry
+    milestone: &milestone
+      required: true
+      selector:
+        text:
+    date: *date
+    note: *note
+
+clear_milestone:
+  fields:
+    config_entry_id: *entry
+    milestone: *milestone
+
+add_milestone:
+  fields:
+    config_entry_id: *entry
+    name:
+      required: true
+      selector:
+        text:
+    date: *date
+    note: *note
+
+delete_milestone:
+  fields:
+    config_entry_id: *entry
+    milestone: *milestone

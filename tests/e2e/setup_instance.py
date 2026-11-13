@@ -68,13 +68,13 @@ async def main(base: str) -> None:
             entry_id = result["result"]["entry_id"]
         await asyncio.sleep(2)
 
-        async def service(name: str, **data: object) -> dict:
+        async def service(action: str, **data: object) -> dict:
             async with session.post(
-                f"{base}/api/services/baby_logger/{name}?return_response",
+                f"{base}/api/services/baby_logger/{action}?return_response",
                 json={"config_entry_id": entry_id, **data},
                 headers=headers,
             ) as resp:
-                assert resp.status == 200, (name, await resp.text())
+                assert resp.status == 200, (action, await resp.text())
                 return await resp.json()
 
         async def state(entity_id: str) -> dict:
@@ -96,6 +96,17 @@ async def main(base: str) -> None:
         assert (await state("sensor.alex_last_diaper_type"))["state"] == "dirty"
         assert (await state("switch.alex_sleeping"))["state"] == "off"
         assert (await state("button.alex_undo_last_action"))["state"] != "unavailable"
+
+        # Growth and milestones.
+        await service("log_growth", weight=4.2, length=55, date="2026-01-10")
+        await service("log_growth", weight=13, length=23, units="imperial", date="2026-03-10")
+        await service("set_milestone", milestone="first_smile", date="2026-02-01")
+        await service("add_milestone", name="First swim", date="2026-03-01")
+        await asyncio.sleep(1)
+        weight = await state("sensor.alex_weight")
+        assert abs(float(weight["state"]) - 5.897) < 0.01, weight
+        assert weight["attributes"]["measured"] == "2026-03-10", weight
+        assert abs(float((await state("sensor.alex_length"))["state"]) - 58.4) < 0.01
 
         # The card is loaded on every page without a manual resource.
         async with session.get(f"{base}/") as resp:
@@ -125,7 +136,17 @@ async def main(base: str) -> None:
                     "url_path": "dashboard-baby",
                     "config": {
                         "views": [
-                            {"title": "Baby", "path": "baby", "cards": [{"type": "custom:baby-logger-card"}]}
+                            {"title": "Baby", "path": "baby", "cards": [{"type": "custom:baby-logger-card"}]},
+                            {
+                                "title": "Growth",
+                                "path": "growth",
+                                "cards": [
+                                    {
+                                        "type": "custom:baby-logger-card",
+                                        "parts": ["buttons", "growth", "milestones"],
+                                    }
+                                ],
+                            },
                         ]
                     },
                 }

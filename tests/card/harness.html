@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  Minimal page for testing the card in a browser without Home Assistant.
+  tests/card/card.test.mjs loads the card module into it and drives it with a mocked hass.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --primary-color: #03a9f4;
+        --text-primary-color: #fff;
+        --primary-text-color: #212121;
+        --secondary-text-color: #727272;
+        --card-background-color: #fff;
+        --secondary-background-color: #f0f0f0;
+        --divider-color: rgba(0, 0, 0, 0.12);
+        --success-color: #43a047;
+        --error-color: #db4437;
+        font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      :root.dark {
+        --primary-text-color: #e1e1e1;
+        --secondary-text-color: #9b9b9b;
+        --card-background-color: #1c1c1c;
+        --secondary-background-color: #282828;
+        --divider-color: rgba(225, 225, 225, 0.12);
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        background: var(--card-background-color);
+        color: var(--primary-text-color);
+      }
+      #host {
+        width: var(--width, 420px);
+      }
+    </style>
+    <script>
+      // Stand-ins for Home Assistant's own elements.
+      customElements.define(
+        "ha-card",
+        class extends HTMLElement {
+          connectedCallback() {
+            this.style.display = "block";
+            this.style.background = "var(--card-background-color)";
+            this.style.borderRadius = "12px";
+            this.style.border = "1px solid var(--divider-color)";
+          }
+        }
+      );
+      customElements.define(
+        "ha-icon",
+        class extends HTMLElement {
+          connectedCallback() {
+            Object.assign(this.style, {
+              display: "inline-block",
+              width: "var(--mdc-icon-size, 24px)",
+              height: "var(--mdc-icon-size, 24px)",
+              borderRadius: "30%",
+              background: "currentColor",
+              flex: "none",
+            });
+          }
+        }
+      );
+
+      /** A hass object that serves `snapshot` and records the actions the card calls. */
+      window.makeHass = (snapshot, sleeps = []) => {
+        let push = null;
+        const hass = {
+          calls: [],
+          ws: [],
+          async callWS(msg) {
+            hass.ws.push(msg);
+            if (msg.type === "baby_logger/babies") return [{ entry_id: snapshot.entry_id, name: snapshot.name }];
+            if (msg.type === "baby_logger/sleeps") return { revision: snapshot.revision, sleeps };
+            throw new Error(`unexpected ${msg.type}`);
+          },
+          connection: {
+            async subscribeMessage(callback, msg) {
+              hass.ws.push(msg);
+              push = callback;
+              setTimeout(() => callback(snapshot), 0);
+              return () => {};
+            },
+          },
+          async callService(domain, service, data) {
+            hass.calls.push({ domain, service, data });
+          },
+          push: (next) => push(next),
+        };
+        return hass;
+      };
+    </script>
+  </head>
+  <body>
+    <div id="host"></div>
+  </body>
+</html>

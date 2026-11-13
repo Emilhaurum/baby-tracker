@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run the checks from the Validate workflow locally.
 #
-#   scripts/validate.sh          lint, version check, card syntax and unit tests
+#   scripts/validate.sh          lint, version check, card syntax and unit tests,
+#                                and the card's browser tests when Playwright is installed
 #   scripts/validate.sh --e2e    also start Home Assistant and run the browser test
 #
 # Needs a Python 3.14 environment with requirements_test.txt and the
@@ -24,6 +25,11 @@ python scripts/set_version.py --check "$(python -c "import json; print(json.load
 step "card"
 node --check custom_components/baby_logger/frontend/baby-logger-card.js
 TZ=Europe/Copenhagen node --test tests/js/*.test.mjs
+if node -e "require('playwright')" 2> /dev/null; then
+  node --test tests/card/*.test.mjs
+else
+  echo "Playwright not installed: skipping the card's browser tests (tests/card)"
+fi
 
 step "unit tests"
 pytest --cov -q

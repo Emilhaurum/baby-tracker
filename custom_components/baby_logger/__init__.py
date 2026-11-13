@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN
+from .const import CONF_BIRTH_DATE, DOMAIN
 from .frontend import async_register_frontend
 from .services import async_setup_services
 from .tracker import BabyTracker
@@ -38,7 +40,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: BabyTrackerConfigEntry) -> bool:
     """Set up a baby from a config entry."""
-    tracker = BabyTracker(hass, entry.entry_id, entry.title)
+    birth_date = entry.data.get(CONF_BIRTH_DATE)
+    tracker = BabyTracker(
+        hass, entry.entry_id, entry.title, date.fromisoformat(birth_date) if birth_date else None
+    )
     await tracker.async_load()
     entry.runtime_data = tracker
     entry.async_on_unload(tracker.async_unload)

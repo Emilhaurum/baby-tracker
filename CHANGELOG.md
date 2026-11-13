@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.0
+
+- Card: new `parts` option to choose which parts the card shows and in which order
+  (`header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`).
+  Cards without it look exactly as before.
+- Card: new `buttons` part with compact one-tap quick buttons (sleep, diapers, feedings,
+  undo), configurable with `buttons` (action, name, icon, colour, width) and
+  `buttons_columns`.
+- Card editor: tick and reorder the parts and the quick buttons, and set a button's name,
+  icon and colour.
+- Growth: log weight and length (`log_growth`, `delete_growth`), kept for years; new
+  `growth` card part with charts over the baby's age, a form to add measurements and a
+  history list; metric or imperial (`units` card option); `weight` and `length` sensors.
+- Milestones: 31 built-in milestones with typical ages (CDC checklists and common firsts)
+  plus your own (`set_milestone`, `clear_milestone`, `add_milestone`,
+  `delete_milestone`); new `milestones` card part.
+- Optional birth date for each baby (setup and Reconfigure), used to show ages.
+
 ## 1.0.1
 
 - Add the `health_wellbeing` category to the integration manifest (used by Home Assistant

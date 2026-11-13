@@ -105,6 +105,9 @@ jobs:
           npm init -y >/dev/null
           npm install playwright@1
           npx playwright install --with-deps chromium
+      - name: Test the card with a mocked hass
+        if: matrix.ha == ''
+        run: node --test tests/card/*.test.mjs
       - name: Start Home Assistant
         run: |
           mkdir -p ha-config/custom_components

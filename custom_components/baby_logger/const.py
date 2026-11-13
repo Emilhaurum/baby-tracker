@@ -45,6 +45,18 @@ STATS_DAYS: Final = 8
 # Finished nights / days averaged in the statistics.
 AVERAGE_OVER: Final = 7
 
+# Plausible ranges for growth measurements (metric).
+MIN_WEIGHT_KG: Final = 0.3
+MAX_WEIGHT_KG: Final = 150
+MIN_LENGTH_CM: Final = 20
+MAX_LENGTH_CM: Final = 220
+KG_PER_LB: Final = 0.45359237
+CM_PER_INCH: Final = 2.54
+UNITS_METRIC: Final = "metric"
+UNITS_IMPERIAL: Final = "imperial"
+
+CONF_BIRTH_DATE: Final = "birth_date"
+
 # Fired on the bus for every logged action (usable in automations, shown in logbook).
 EVENT_BABY_TRACKER: Final = f"{DOMAIN}_event"
 
@@ -57,6 +69,13 @@ ATTR_START: Final = "start"
 ATTR_END: Final = "end"
 ATTR_EVENT_ID: Final = "event_id"
 ATTR_ACTION: Final = "action"
+ATTR_DATE: Final = "date"
+ATTR_NOTE: Final = "note"
+ATTR_WEIGHT: Final = "weight"
+ATTR_LENGTH: Final = "length"
+ATTR_UNITS: Final = "units"
+ATTR_MILESTONE: Final = "milestone"
+ATTR_NAME: Final = "name"
 
 SERVICE_LOG_DIAPER: Final = "log_diaper"
 SERVICE_LOG_FEEDING: Final = "log_feeding"
@@ -65,6 +84,12 @@ SERVICE_END_SLEEP: Final = "end_sleep"
 SERVICE_ADD_SLEEP: Final = "add_sleep"
 SERVICE_UNDO: Final = "undo"
 SERVICE_DELETE_EVENT: Final = "delete_event"
+SERVICE_LOG_GROWTH: Final = "log_growth"
+SERVICE_DELETE_GROWTH: Final = "delete_growth"
+SERVICE_SET_MILESTONE: Final = "set_milestone"
+SERVICE_CLEAR_MILESTONE: Final = "clear_milestone"
+SERVICE_ADD_MILESTONE: Final = "add_milestone"
+SERVICE_DELETE_MILESTONE: Final = "delete_milestone"
 
 FRONTEND_URL_BASE: Final = f"/{DOMAIN}_static"
 CARD_FILENAME: Final = "baby-logger-card.js"

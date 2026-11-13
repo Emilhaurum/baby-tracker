@@ -4,13 +4,25 @@
       "user": {
         "title": "Add a baby",
         "description": "Each baby you add gets its own device, sensors, buttons and sleep calendar.",
-        "data": { "name": "Name" },
-        "data_description": { "name": "The baby's name, used for the device and entity names." }
+        "data": {
+          "name": "Name",
+          "birth_date": "Birth date"
+        },
+        "data_description": {
+          "name": "The baby's name, used for the device and entity names.",
+          "birth_date": "Optional. Used to show the baby's age on the growth chart and milestones."
+        }
       },
       "reconfigure": {
-        "title": "Rename baby",
-        "data": { "name": "Name" },
-        "data_description": { "name": "The baby's name, used for the device and entity names." }
+        "title": "Change baby",
+        "data": {
+          "name": "Name",
+          "birth_date": "Birth date"
+        },
+        "data_description": {
+          "name": "The baby's name, used for the device and entity names.",
+          "birth_date": "Optional. Used to show the baby's age on the growth chart and milestones."
+        }
       }
     },
     "error": {
@@ -18,24 +30,42 @@
     },
     "abort": {
       "already_configured": "A baby with this name is already being tracked.",
-      "reconfigure_successful": "The baby was renamed."
+      "reconfigure_successful": "The baby was updated."
     }
   },
   "entity": {
     "button": {
-      "diaper_wet": { "name": "Diaper wet" },
-      "diaper_dirty": { "name": "Diaper dirty" },
-      "diaper_both": { "name": "Diaper wet and dirty" },
-      "feed_left": { "name": "Feed left" },
-      "feed_right": { "name": "Feed right" },
-      "feed_bottle": { "name": "Feed bottle" },
-      "undo": { "name": "Undo last action" }
+      "diaper_wet": {
+        "name": "Diaper wet"
+      },
+      "diaper_dirty": {
+        "name": "Diaper dirty"
+      },
+      "diaper_both": {
+        "name": "Diaper wet and dirty"
+      },
+      "feed_left": {
+        "name": "Feed left"
+      },
+      "feed_right": {
+        "name": "Feed right"
+      },
+      "feed_bottle": {
+        "name": "Feed bottle"
+      },
+      "undo": {
+        "name": "Undo last action"
+      }
     },
     "calendar": {
-      "sleep": { "name": "Sleep" }
+      "sleep": {
+        "name": "Sleep"
+      }
     },
     "number": {
-      "feeding_merge_window": { "name": "Same feeding window" }
+      "feeding_merge_window": {
+        "name": "Same feeding window"
+      }
     },
     "sensor": {
       "last_diaper": {
@@ -43,21 +73,35 @@
         "state_attributes": {
           "type": {
             "name": "Type",
-            "state": { "wet": "Wet", "dirty": "Dirty", "both": "Wet and dirty" }
+            "state": {
+              "wet": "Wet",
+              "dirty": "Dirty",
+              "both": "Wet and dirty"
+            }
           }
         }
       },
       "last_diaper_type": {
         "name": "Last diaper type",
-        "state": { "wet": "Wet", "dirty": "Dirty", "both": "Wet and dirty" }
+        "state": {
+          "wet": "Wet",
+          "dirty": "Dirty",
+          "both": "Wet and dirty"
+        }
       },
       "diapers_today": {
         "name": "Diapers today",
         "unit_of_measurement": "diapers",
         "state_attributes": {
-          "wet": { "name": "Wet" },
-          "dirty": { "name": "Dirty" },
-          "both": { "name": "Wet and dirty" }
+          "wet": {
+            "name": "Wet"
+          },
+          "dirty": {
+            "name": "Dirty"
+          },
+          "both": {
+            "name": "Wet and dirty"
+          }
         }
       },
       "last_feeding": {
@@ -65,91 +109,238 @@
         "state_attributes": {
           "side": {
             "name": "Side",
-            "state": { "left": "Left", "right": "Right", "bottle": "Bottle" }
+            "state": {
+              "left": "Left",
+              "right": "Right",
+              "bottle": "Bottle"
+            }
           },
-          "amount_ml": { "name": "Amount (ml)" },
-          "sides": { "name": "Sides" },
-          "last_switch": { "name": "Last side switch" }
+          "amount_ml": {
+            "name": "Amount (ml)"
+          },
+          "sides": {
+            "name": "Sides"
+          },
+          "last_switch": {
+            "name": "Last side switch"
+          }
         }
       },
       "last_feeding_side": {
         "name": "Last feeding side",
-        "state": { "left": "Left", "right": "Right", "bottle": "Bottle" }
+        "state": {
+          "left": "Left",
+          "right": "Right",
+          "bottle": "Bottle"
+        }
       },
       "next_feeding_side": {
         "name": "Next feeding side",
-        "state": { "left": "Left", "right": "Right" }
+        "state": {
+          "left": "Left",
+          "right": "Right"
+        }
       },
       "feedings_today": {
         "name": "Feedings today",
         "unit_of_measurement": "feedings",
         "state_attributes": {
-          "left": { "name": "Left" },
-          "right": { "name": "Right" },
-          "bottle": { "name": "Bottle" }
+          "left": {
+            "name": "Left"
+          },
+          "right": {
+            "name": "Right"
+          },
+          "bottle": {
+            "name": "Bottle"
+          }
         }
       },
-      "bottle_today": { "name": "Bottle today" },
-      "sleep_today": { "name": "Sleep today" },
+      "bottle_today": {
+        "name": "Bottle today"
+      },
+      "sleep_today": {
+        "name": "Sleep today"
+      },
       "last_night_sleep": {
         "name": "Last night sleep",
         "state_attributes": {
-          "awake": { "name": "Awake (h)" },
-          "wakes": { "name": "Wake-ups" },
-          "from": { "name": "From" },
-          "to": { "name": "To" },
-          "avg_asleep": { "name": "Average asleep (h)" },
-          "avg_awake": { "name": "Average awake (h)" },
-          "avg_wakes": { "name": "Average wake-ups" },
-          "nights": { "name": "Nights" }
+          "awake": {
+            "name": "Awake (h)"
+          },
+          "wakes": {
+            "name": "Wake-ups"
+          },
+          "from": {
+            "name": "From"
+          },
+          "to": {
+            "name": "To"
+          },
+          "avg_asleep": {
+            "name": "Average asleep (h)"
+          },
+          "avg_awake": {
+            "name": "Average awake (h)"
+          },
+          "avg_wakes": {
+            "name": "Average wake-ups"
+          },
+          "nights": {
+            "name": "Nights"
+          }
         }
       },
       "daytime_sleep": {
         "name": "Daytime sleep",
         "state_attributes": {
-          "awake": { "name": "Awake (h)" },
-          "naps": { "name": "Naps" },
-          "from": { "name": "From" },
-          "to": { "name": "To" },
-          "done": { "name": "Finished" },
-          "avg_asleep": { "name": "Average asleep (h)" },
-          "avg_awake": { "name": "Average awake (h)" },
-          "avg_naps": { "name": "Average naps" },
-          "days": { "name": "Days" }
+          "awake": {
+            "name": "Awake (h)"
+          },
+          "naps": {
+            "name": "Naps"
+          },
+          "from": {
+            "name": "From"
+          },
+          "to": {
+            "name": "To"
+          },
+          "done": {
+            "name": "Finished"
+          },
+          "avg_asleep": {
+            "name": "Average asleep (h)"
+          },
+          "avg_awake": {
+            "name": "Average awake (h)"
+          },
+          "avg_naps": {
+            "name": "Average naps"
+          },
+          "days": {
+            "name": "Days"
+          }
         }
       },
-      "last_woke_up": { "name": "Last woke up" }
+      "last_woke_up": {
+        "name": "Last woke up"
+      },
+      "weight": {
+        "name": "Weight",
+        "state_attributes": {
+          "measured": {
+            "name": "Measured"
+          }
+        }
+      },
+      "length": {
+        "name": "Length",
+        "state_attributes": {
+          "measured": {
+            "name": "Measured"
+          }
+        }
+      }
     },
     "switch": {
       "sleeping": {
         "name": "Sleeping",
-        "state_attributes": { "since": { "name": "Since" } }
+        "state_attributes": {
+          "since": {
+            "name": "Since"
+          }
+        }
       }
     },
     "time": {
-      "night_start": { "name": "Night starts" },
-      "night_end": { "name": "Night ends" }
+      "night_start": {
+        "name": "Night starts"
+      },
+      "night_end": {
+        "name": "Night ends"
+      }
     }
   },
   "exceptions": {
-    "entry_not_found": { "message": "No baby with config entry ID {entry_id} was found." },
-    "entry_not_loaded": { "message": "{name} is not loaded." },
-    "event_not_found": { "message": "No logged entry with ID {event_id} was found." },
-    "invalid_diaper_type": { "message": "Unknown diaper type: {type}." },
-    "invalid_side": { "message": "Unknown feeding side: {side}." },
-    "nothing_to_undo": { "message": "There is nothing to undo (the undo window is 30 seconds)." },
-    "already_sleeping": { "message": "The baby is already marked as sleeping." },
-    "not_sleeping": { "message": "The baby is not marked as sleeping." },
-    "end_before_start": { "message": "The end time must be after the start time." },
-    "all_day_sleep": { "message": "Sleeps need a start and end time, not whole days." },
-    "night_window_empty": { "message": "The night can't start and end at the same time." }
+    "entry_not_found": {
+      "message": "No baby with config entry ID {entry_id} was found."
+    },
+    "entry_not_loaded": {
+      "message": "{name} is not loaded."
+    },
+    "event_not_found": {
+      "message": "No logged entry with ID {event_id} was found."
+    },
+    "invalid_diaper_type": {
+      "message": "Unknown diaper type: {type}."
+    },
+    "invalid_side": {
+      "message": "Unknown feeding side: {side}."
+    },
+    "nothing_to_undo": {
+      "message": "There is nothing to undo (the undo window is 30 seconds)."
+    },
+    "already_sleeping": {
+      "message": "The baby is already marked as sleeping."
+    },
+    "not_sleeping": {
+      "message": "The baby is not marked as sleeping."
+    },
+    "end_before_start": {
+      "message": "The end time must be after the start time."
+    },
+    "all_day_sleep": {
+      "message": "Sleeps need a start and end time, not whole days."
+    },
+    "night_window_empty": {
+      "message": "The night can't start and end at the same time."
+    },
+    "growth_empty": {
+      "message": "Enter a weight, a length or both."
+    },
+    "weight_out_of_range": {
+      "message": "The weight must be between {min} and {max} kg."
+    },
+    "length_out_of_range": {
+      "message": "The length must be between {min} and {max} cm."
+    },
+    "milestone_not_found": {
+      "message": "Unknown milestone: {milestone}."
+    },
+    "milestone_not_custom": {
+      "message": "Only milestones you added can be deleted ({milestone})."
+    },
+    "milestone_name_empty": {
+      "message": "Please enter a name for the milestone."
+    },
+    "date_in_future": {
+      "message": "The date can't be in the future."
+    },
+    "date_before_birth": {
+      "message": "The date can't be before the birth date ({birth_date})."
+    }
   },
   "selector": {
     "diaper_type": {
-      "options": { "wet": "Wet", "dirty": "Dirty", "both": "Wet and dirty" }
+      "options": {
+        "wet": "Wet",
+        "dirty": "Dirty",
+        "both": "Wet and dirty"
+      }
     },
     "feeding_side": {
-      "options": { "left": "Left", "right": "Right", "bottle": "Bottle" }
+      "options": {
+        "left": "Left",
+        "right": "Right",
+        "bottle": "Bottle"
+      }
+    },
+    "units": {
+      "options": {
+        "metric": "Metric (kg, cm)",
+        "imperial": "Imperial (lb, in)"
+      }
     }
   },
   "services": {
@@ -157,59 +348,226 @@
       "name": "Log diaper",
       "description": "Logs a diaper change.",
       "fields": {
-        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
-        "type": { "name": "Type", "description": "What was in the diaper." },
-        "time": { "name": "Time", "description": "When it happened. Defaults to now." }
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "type": {
+          "name": "Type",
+          "description": "What was in the diaper."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened. Defaults to now."
+        }
       }
     },
     "log_feeding": {
       "name": "Log feeding",
       "description": "Logs a feeding. Entries within the same feeding window as the previous one are added to that feeding as a side switch.",
       "fields": {
-        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
-        "side": { "name": "Side", "description": "Left or right breast, or bottle." },
-        "amount_ml": { "name": "Amount", "description": "How much was fed (for bottle feeds)." },
-        "time": { "name": "Time", "description": "When it happened. Defaults to now." }
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "side": {
+          "name": "Side",
+          "description": "Left or right breast, or bottle."
+        },
+        "amount_ml": {
+          "name": "Amount",
+          "description": "How much was fed (for bottle feeds)."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened. Defaults to now."
+        }
       }
     },
     "start_sleep": {
       "name": "Start sleep",
       "description": "Marks the baby as asleep.",
       "fields": {
-        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
-        "time": { "name": "Time", "description": "When the baby fell asleep. Defaults to now." }
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When the baby fell asleep. Defaults to now."
+        }
       }
     },
     "end_sleep": {
       "name": "End sleep",
       "description": "Marks the baby as awake and stores the sleep in the sleep calendar.",
       "fields": {
-        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
-        "time": { "name": "Time", "description": "When the baby woke up. Defaults to now." }
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When the baby woke up. Defaults to now."
+        }
       }
     },
     "add_sleep": {
       "name": "Add sleep",
       "description": "Adds a finished sleep after the fact.",
       "fields": {
-        "config_entry_id": { "name": "Baby", "description": "The baby to log for." },
-        "start": { "name": "Start", "description": "When the baby fell asleep." },
-        "end": { "name": "End", "description": "When the baby woke up." }
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "start": {
+          "name": "Start",
+          "description": "When the baby fell asleep."
+        },
+        "end": {
+          "name": "End",
+          "description": "When the baby woke up."
+        }
       }
     },
     "undo": {
       "name": "Undo last action",
       "description": "Reverts the latest logged action, within 30 seconds.",
       "fields": {
-        "config_entry_id": { "name": "Baby", "description": "The baby to undo for." }
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to undo for."
+        }
       }
     },
     "delete_event": {
       "name": "Delete entry",
       "description": "Deletes a logged diaper, feeding or sleep.",
       "fields": {
-        "config_entry_id": { "name": "Baby", "description": "The baby the entry belongs to." },
-        "event_id": { "name": "Entry ID", "description": "The ID of the logged entry (shown in the dashboard card)." }
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby the entry belongs to."
+        },
+        "event_id": {
+          "name": "Entry ID",
+          "description": "The ID of the logged entry (shown in the dashboard card)."
+        }
+      }
+    },
+    "log_growth": {
+      "name": "Log growth",
+      "description": "Logs a weight and/or length measurement.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "weight": {
+          "name": "Weight",
+          "description": "Weight in kg (metric) or lb (imperial)."
+        },
+        "length": {
+          "name": "Length",
+          "description": "Length or height in cm (metric) or inches (imperial)."
+        },
+        "units": {
+          "name": "Units",
+          "description": "Units of the weight and length. Stored as metric."
+        },
+        "date": {
+          "name": "Date",
+          "description": "When it was measured or reached. Defaults to today."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional note."
+        }
+      }
+    },
+    "delete_growth": {
+      "name": "Delete measurement",
+      "description": "Deletes a logged growth measurement.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby the measurement belongs to."
+        },
+        "event_id": {
+          "name": "Measurement ID",
+          "description": "The ID of the measurement."
+        }
+      }
+    },
+    "set_milestone": {
+      "name": "Reach milestone",
+      "description": "Marks a milestone as reached, or changes the date it was reached.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "milestone": {
+          "name": "Milestone",
+          "description": "The milestone key, e.g. first_steps, or the ID of a milestone you added."
+        },
+        "date": {
+          "name": "Date",
+          "description": "When it was measured or reached. Defaults to today."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional note."
+        }
+      }
+    },
+    "clear_milestone": {
+      "name": "Clear milestone",
+      "description": "Marks a milestone as not reached.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "milestone": {
+          "name": "Milestone",
+          "description": "The milestone key or ID."
+        }
+      }
+    },
+    "add_milestone": {
+      "name": "Add milestone",
+      "description": "Adds a milestone of your own, reached on the given date if one is set.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "name": {
+          "name": "Name",
+          "description": "What the baby did, e.g. First swim."
+        },
+        "date": {
+          "name": "Date",
+          "description": "When it was reached. Leave empty to add it as not reached yet."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional note."
+        }
+      }
+    },
+    "delete_milestone": {
+      "name": "Delete milestone",
+      "description": "Deletes a milestone you added.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "milestone": {
+          "name": "Milestone",
+          "description": "The ID of the milestone you added."
+        }
       }
     }
   }
