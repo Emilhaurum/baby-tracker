@@ -19,7 +19,7 @@
  *   night_end: "07:00"        optional; defaults to the integration's "Night ends" setting
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.1";
 const DOMAIN = "baby_logger";
 
 const DIAPER = {
