@@ -168,7 +168,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             length_cm=length * CM_PER_INCH if imperial and length is not None else length,
             note=call.data.get(ATTR_NOTE),
         )
-        return {"measurement": {**entry, "date": entry["date"].isoformat()}}
+        return {"measurement": tracker.growth_as_dict(entry)}
 
     async def delete_growth(call: ServiceCall) -> None:
         get_tracker(hass, call.data[ATTR_CONFIG_ENTRY_ID]).async_delete_growth(call.data[ATTR_EVENT_ID])

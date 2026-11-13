@@ -313,6 +313,12 @@
     },
     "milestone_name_empty": {
       "message": "Please enter a name for the milestone."
+    },
+    "date_in_future": {
+      "message": "The date can't be in the future."
+    },
+    "date_before_birth": {
+      "message": "The date can't be before the birth date ({birth_date})."
     }
   },
   "selector": {

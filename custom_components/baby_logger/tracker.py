@@ -206,7 +206,7 @@ class BabyTracker:
     def _data_to_save(self) -> dict[str, Any]:
         return {
             "events": [e.as_dict() for e in self.events],
-            "growth": [{**g, "date": g["date"].isoformat()} for g in self.growth],
+            "growth": [self.growth_as_dict(g) for g in self.growth],
             "milestones": {
                 key: {**done, "date": done["date"].isoformat()} for key, done in self.milestones_done.items()
             },
@@ -552,7 +552,7 @@ class BabyTracker:
             )
         entry: dict[str, Any] = {
             "id": uuid.uuid4().hex,
-            "date": when or dt_util.now().date(),
+            "date": self._check_date(when),
             "weight_kg": round(weight_kg, 3) if weight_kg is not None else None,
             "length_cm": round(length_cm, 1) if length_cm is not None else None,
             "note": note or None,
@@ -568,6 +568,25 @@ class BabyTracker:
             },
         )
         return entry
+
+    def _check_date(self, when: date | None) -> date:
+        """Return ``when`` (today if None); not in the future and not before birth."""
+        today = dt_util.now().date()
+        when = when or today
+        if when > today:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="date_in_future")
+        if self.birth_date and when < self.birth_date:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="date_before_birth",
+                translation_placeholders={"birth_date": self.birth_date.isoformat()},
+            )
+        return when
+
+    @staticmethod
+    def growth_as_dict(entry: dict[str, Any]) -> dict[str, Any]:
+        """Return a measurement with its date as text."""
+        return {**entry, "date": entry["date"].isoformat()}
 
     def _remove_growth(self, growth_id: str) -> None:
         self.growth = [g for g in self.growth if g["id"] != growth_id]
@@ -619,7 +638,7 @@ class BabyTracker:
     def async_set_milestone(self, key: str, when: date | None = None, note: str | None = None) -> date:
         """Mark a milestone as reached (or change its date)."""
         name = self.milestone_name(key)
-        at = when or dt_util.now().date()
+        at = self._check_date(when)
         self._set_undo("milestone", self._restore_milestone(key, self.milestones_done.get(key)))
         self.milestones_done[key] = {"date": at, "note": note or None}
         self._changed("milestone", {"milestone": key, "milestone_name": name, "date": at.isoformat()})
@@ -641,6 +660,8 @@ class BabyTracker:
         name = name.strip()
         if not name:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="milestone_name_empty")
+        if when is not None:
+            when = self._check_date(when)
         custom_id = f"custom_{uuid.uuid4().hex[:12]}"
         self.custom_milestones = [*self.custom_milestones, {"id": custom_id, "name": name[:100]}]
         if when is not None:
@@ -820,7 +841,7 @@ class BabyTracker:
             "days": [d.as_dict() for d in days],
         }
 
-    def snapshot(self, days: int) -> dict[str, Any]:
+    def snapshot(self, days: int, growth: bool = False, milestones: bool = False) -> dict[str, Any]:
         """Return everything the dashboard card needs."""
         now = dt_util.utcnow()
         last_diaper = self.latest(KIND_DIAPER)
@@ -833,8 +854,9 @@ class BabyTracker:
             "name": self.name,
             "revision": self._revision,
             "birth_date": self.birth_date.isoformat() if self.birth_date else None,
-            "growth": [{**g, "date": g["date"].isoformat()} for g in self.growth],
-            "milestones": self.milestones_snapshot(),
+            # Only for cards that show them: the growth history is kept for years.
+            "growth": [self.growth_as_dict(g) for g in self.growth] if growth else None,
+            "milestones": self.milestones_snapshot() if milestones else None,
             "now": now.isoformat(),
             "sleeping": self.sleeping,
             "sleep_start": self.sleep_start.isoformat() if self.sleep_start else None,

@@ -508,16 +508,31 @@ function nightsHtml(nights, settings) {
 }
 
 /**
+ * Part names from a written `parts` list: trimmed, known and without duplicates.
+ */
+export function partEntries(list) {
+  return [...new Set(list.map((p) => String(p).trim()))].filter((p) => PARTS.includes(p));
+}
+
+/** A `buttons` entry as an object with a trimmed action, or null for an unknown action. */
+export function buttonEntry(entry) {
+  const item = typeof entry === "string" ? { action: entry } : { ...(entry || {}) };
+  item.action = String(item.action ?? "").trim();
+  return BUTTON_ACTIONS[item.action] ? item : null;
+}
+
+/**
  * The parts to render, in order. Without a `parts` option this is what the card
- * has always shown, derived from the show_* flags. The undo banner is added above
- * the first part with buttons (or the log, whose delete can be undone) when it
- * isn't listed, so an action can always be undone. It is left out when the quick
- * buttons already have an Undo button.
+ * has always shown, derived from the show_* flags. The undo banner is added when
+ * it isn't listed, so an action can always be undone: above the first part with
+ * buttons (quick buttons or tiles), otherwise above the first part whose entries
+ * can be added or deleted (growth, milestones or the log). It is left out when the
+ * quick buttons already have an Undo button.
  */
 export function resolveParts(cfg) {
   let parts;
   if (Array.isArray(cfg.parts)) {
-    parts = [...new Set(cfg.parts.map((p) => String(p).trim()).filter((p) => PARTS.includes(p)))];
+    parts = partEntries(cfg.parts);
   } else {
     parts = ["header", "undo", "tiles"];
     for (const [part, flag] of [
@@ -533,30 +548,49 @@ export function resolveParts(cfg) {
   const undoButton = parts.includes("buttons") && buttonList(cfg).some((b) => b.action === "undo");
   if (!parts.includes("undo") && !undoButton) {
     const at = parts.findIndex((p) => p === "buttons" || p === "tiles");
-    const index = at >= 0 ? at : parts.indexOf("log");
+    const index = at >= 0 ? at : parts.findIndex((p) => p === "growth" || p === "milestones" || p === "log");
     if (index >= 0) parts.splice(index, 0, "undo");
   }
   return parts;
 }
 
-/** Normalised quick buttons from the `buttons` / `buttons_columns` options. */
-export function buttonList(cfg) {
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+
+/**
+ * The grid the quick buttons sit in: enough columns for both a 12-column width
+ * (the `columns` option of a button) and an even split into `buttons_columns`
+ * per row, e.g. 60 columns for 5 per row.
+ */
+export function buttonGrid(cfg) {
   const perRow = clampInt(cfg.buttons_columns, 1, 12, 3);
+  return { perRow, columns: (12 * perRow) / gcd(12, perRow) };
+}
+
+/**
+ * Normalised quick buttons from the `buttons` / `buttons_columns` options.
+ * `columns` is the width out of 12 (the button's own `columns`, or an even
+ * share of the row); `span` is the width in buttonGrid() columns.
+ */
+export function buttonList(cfg) {
+  const grid = buttonGrid(cfg);
   const entries = Array.isArray(cfg.buttons) ? cfg.buttons : DEFAULT_BUTTONS;
   const seen = new Set();
   const buttons = [];
   for (const entry of entries) {
-    const item = typeof entry === "string" ? { action: entry } : entry || {};
-    const action = String(item.action ?? "").trim();
+    const item = buttonEntry(entry);
+    if (!item || seen.has(item.action)) continue;
+    const { action } = item;
     const base = BUTTON_ACTIONS[action];
-    if (!base || seen.has(action)) continue;
     seen.add(action);
+    const fixed = item.columns ?? base.columns;
+    const columns = fixed != null ? clampInt(fixed, 1, 12, 12) : null;
     buttons.push({
       action,
       name: item.name ? String(item.name) : null,
       icon: item.icon ? String(item.icon) : null,
       color: item.color ? String(item.color) : null,
-      columns: clampInt(item.columns, 1, 12, base.columns ?? Math.max(1, Math.floor(12 / perRow))),
+      columns: columns ?? 12 / grid.perRow,
+      span: columns != null ? (columns * grid.columns) / 12 : grid.columns / grid.perRow,
     });
   }
   return buttons;
@@ -820,8 +854,12 @@ class BabyTrackerCard extends HTMLElement {
 
   setConfig(config) {
     if (!config) throw new Error("Invalid configuration");
-    const changed = this._config && (this._config.entry_id !== config.entry_id || this._config.days !== config.days);
-    this._config = { ...DEFAULTS, ...config };
+    const next = { ...DEFAULTS, ...config };
+    const needs = (c) => JSON.stringify(this._dataNeeds(c));
+    const changed =
+      this._config &&
+      (this._config.entry_id !== next.entry_id || this._config.days !== next.days || needs(this._config) !== needs(next));
+    this._config = next;
     if (changed) this._resubscribe();
     else if (this._data && this._needsSleeps()) this._ensureSleeps(this._data);
     this._render();
@@ -876,7 +914,7 @@ class BabyTrackerCard extends HTMLElement {
           if (this._needsSleeps()) this._ensureSleeps(data);
           this._render();
         },
-        { type: `${DOMAIN}/subscribe`, entry_id: entryId, days: Number(this._config.days) || 7 }
+        { type: `${DOMAIN}/subscribe`, entry_id: entryId, days: Number(this._config.days) || 7, ...this._dataNeeds() }
       );
       if (generation !== this._generation) {
         // The card was reconfigured or removed while subscribing.
@@ -898,6 +936,12 @@ class BabyTrackerCard extends HTMLElement {
 
   _parts() {
     return resolveParts(this._config);
+  }
+
+  /** The optional data the subscription sends, only for the parts shown. */
+  _dataNeeds(config = this._config) {
+    const parts = resolveParts(config);
+    return { growth: parts.includes("growth"), milestones: parts.includes("milestones") };
   }
 
   _needsSleeps() {
@@ -1052,8 +1096,12 @@ class BabyTrackerCard extends HTMLElement {
         });
         break;
       case "milestone-clear":
-        this._milestoneEdit = null;
-        this._call("clear_milestone", { milestone: value });
+        this._call("clear_milestone", { milestone: value }).then((ok) => {
+          if (ok) {
+            this._milestoneEdit = null;
+            this._render();
+          }
+        });
         break;
       case "milestone-delete": {
         const m = (this._data?.milestones || []).find((x) => x.key === value);
@@ -1073,9 +1121,11 @@ class BabyTrackerCard extends HTMLElement {
           this.shadowRoot.querySelector("#milestone-name")?.focus();
           break;
         }
-        this._call("add_milestone", { name, date: this._milestoneForm.newDate || todayIso() }).then((ok) => {
+        // An untouched date means today; a cleared one adds it as not reached yet.
+        const date = this._milestoneForm.newDate ?? todayIso();
+        this._call("add_milestone", date ? { name, date } : { name }).then((ok) => {
           if (ok) {
-            this._milestoneForm = { ...this._milestoneForm, name: "", newDate: "" };
+            this._milestoneForm = { ...this._milestoneForm, name: "", newDate: undefined };
             this._render();
           }
         });
@@ -1342,14 +1392,15 @@ class BabyTrackerCard extends HTMLElement {
         }
         // Wide buttons put the text next to the icon; narrow ones below it.
         const layout = b.columns >= 6 ? " wide" : "";
-        return `<button class="qb${layout}${classes}" style="grid-column: span ${b.columns}; --accent: ${resolveColor(color)}"
+        return `<button class="qb${layout}${classes}" style="grid-column: span ${b.span}; --accent: ${resolveColor(color)}"
           data-action="${action}"${value ? ` data-value="${value}"` : ""} data-source="buttons">
           <span class="qb-icon"><ha-icon icon="${esc(icon)}"></ha-icon></span>
           <span class="qb-text"><span class="qb-name">${esc(name)}</span>${sub ? `<span class="qb-sub">${sub}</span>` : ""}</span>${badge}
         </button>`;
       })
       .join("");
-    return `<div class="quick">${buttons}</div>${this._bottleForm("buttons")}`;
+    const grid = buttonGrid(this._config).columns;
+    return `<div class="quick" style="grid-template-columns: repeat(${grid}, minmax(0, 1fr))">${buttons}</div>${this._bottleForm("buttons")}`;
   }
 
   _growthHtml(d) {
@@ -1457,7 +1508,7 @@ class BabyTrackerCard extends HTMLElement {
           ${groups}
           <div class="form" data-submit="milestone-add">
             <label>Add your own <input id="milestone-name" type="text" maxlength="100" placeholder="e.g. First swim" data-form="milestone" data-field="name" value="${esc(form.name ?? "")}"></label>
-            <label>Reached on <input id="milestone-new-date" type="date" max="${todayIso()}" data-form="milestone" data-field="newDate" value="${esc(form.newDate || todayIso())}"></label>
+            <label>Reached on (clear if not yet) <input id="milestone-new-date" type="date" max="${todayIso()}" data-form="milestone" data-field="newDate" value="${esc(form.newDate ?? todayIso())}"></label>
             <div class="actions"><button class="small primary" data-action="milestone-add"><ha-icon icon="mdi:plus"></ha-icon>Add</button></div>
           </div>
         </div>`;
@@ -1561,7 +1612,7 @@ const STYLE = `
     background: color-mix(in srgb, var(--success-color, #43a047) 15%, var(--card-background-color)); }
   .undo > ha-icon { color: var(--success-color, #43a047); }
   .undo span:first-of-type { flex: 1; }
-  .quick { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+  .quick { display: grid; gap: 8px; margin: 12px 0; }
   .qb { position: relative; min-width: 0; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
     padding: 8px 4px; border-radius: 12px; background: var(--secondary-background-color); border: 2px solid transparent; text-align: center; }
   .qb.wide { flex-direction: row; justify-content: flex-start; gap: 12px; padding: 8px 12px; text-align: left; }
@@ -1635,7 +1686,7 @@ const STYLE = `
   .form-toggle { margin-top: 12px; }
   .section-title .count { font-weight: 400; color: var(--secondary-text-color); font-size: 0.85em; margin-left: 6px; }
   .ms-group { margin-top: 12px; }
-  .ms-group:first-of-type { margin-top: 0; }
+  .section-title + .ms-group { margin-top: 0; }
   .ms-group-title { font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
   .ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .ms { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 10px; border-radius: 10px; text-align: left;
@@ -1695,7 +1746,7 @@ class BabyTrackerCardEditor extends HTMLElement {
     // A written list as-is (an undo banner the card adds itself shows as hidden);
     // otherwise what the card shows today from the show_* flags.
     const shown = Array.isArray(parts)
-      ? [...new Set(parts.map((p) => String(p).trim()))].filter((p) => PARTS.includes(p))
+      ? partEntries(parts)
       : resolveParts({ ...this._config, parts: undefined });
     return [...shown.map((part) => ({ part, on: true })), ...PARTS.filter((p) => !shown.includes(p)).map((part) => ({ part, on: false }))];
   }
@@ -1705,8 +1756,8 @@ class BabyTrackerCardEditor extends HTMLElement {
     const raw = Array.isArray(this._config.buttons) ? this._config.buttons : DEFAULT_BUTTONS;
     const byAction = new Map();
     for (const entry of raw) {
-      const item = typeof entry === "string" ? { action: entry } : { ...(entry || {}) };
-      if (BUTTON_ACTIONS[item.action] && !byAction.has(item.action)) byAction.set(item.action, item);
+      const item = buttonEntry(entry);
+      if (item && !byAction.has(item.action)) byAction.set(item.action, item);
     }
     const shown = [...byAction.values()].map((item) => ({ ...item, on: true }));
     const hidden = DEFAULT_BUTTONS.filter((a) => !byAction.has(a)).map((action) => ({ action, on: false }));

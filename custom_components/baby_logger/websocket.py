@@ -49,6 +49,8 @@ def ws_babies(hass: HomeAssistant, connection: websocket_api.ActiveConnection, m
         vol.Required("type"): f"{DOMAIN}/subscribe",
         vol.Required("entry_id"): str,
         vol.Optional("days", default=7): vol.All(int, vol.Range(min=1, max=31)),
+        vol.Optional("growth", default=False): bool,
+        vol.Optional("milestones", default=False): bool,
     }
 )
 @callback
@@ -73,7 +75,11 @@ def ws_subscribe(
         tracker = getattr(entry, "runtime_data", None) if entry else None
         if tracker is None:
             return
-        connection.send_message(websocket_api.event_message(msg["id"], tracker.snapshot(days)))
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"], tracker.snapshot(days, growth=msg["growth"], milestones=msg["milestones"])
+            )
+        )
 
     connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, signal_update(entry_id), forward)
     connection.send_result(msg["id"])

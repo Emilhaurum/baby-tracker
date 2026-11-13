@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER
@@ -144,7 +145,15 @@ async def test_snapshot(hass: HomeAssistant, entry: MockConfigEntry, hass_ws_cli
     await call(hass, "set_milestone", milestone="crawls", date="2026-09-01")
     custom = (await call(hass, "add_milestone", response=True, name="First swim"))["milestone"]
     client = await hass_ws_client(hass)
+    # Without the flags growth and milestones are left out.
     await client.send_json_auto_id({"type": "baby_logger/subscribe", "entry_id": entry.entry_id})
+    assert (await client.receive_json())["success"]
+    snap = (await client.receive_json())["event"]
+    assert snap["growth"] is None
+    assert snap["milestones"] is None
+    await client.send_json_auto_id(
+        {"type": "baby_logger/subscribe", "entry_id": entry.entry_id, "growth": True, "milestones": True}
+    )
     assert (await client.receive_json())["success"]
     snap = (await client.receive_json())["event"]
     assert snap["birth_date"] is None
@@ -211,6 +220,53 @@ async def test_birth_date_in_config_flow(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert entry.data == {"name": "Sam"}
     assert entry.runtime_data.birth_date is None
+
+
+async def test_reconfigure_keeps_other_data(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, title="Sam", data={"name": "Sam", "extra": 1})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Sammy", "birth_date": "2026-01-15"}
+    )
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data == {"name": "Sammy", "extra": 1, "birth_date": "2026-01-15"}
+
+
+async def test_dates_must_be_possible(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, title="Sam", data={"name": "Sam", "birth_date": "2026-01-15"})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    tomorrow = (dt_util.now().date() + timedelta(days=1)).isoformat()
+
+    async def run(action: str, **data: Any) -> None:
+        await hass.services.async_call(
+            DOMAIN, action, {"config_entry_id": entry.entry_id, **data}, blocking=True
+        )
+
+    for action, data in (
+        ("log_growth", {"weight": 4.2}),
+        ("set_milestone", {"milestone": "crawls"}),
+        ("add_milestone", {"name": "First swim"}),
+    ):
+        with pytest.raises(ServiceValidationError) as err:
+            await run(action, **data, date=tomorrow)
+        assert err.value.translation_key == "date_in_future"
+        with pytest.raises(ServiceValidationError) as err:
+            await run(action, **data, date="2026-01-14")
+        assert err.value.translation_key == "date_before_birth"
+    # The birth day itself is fine, and so is a custom milestone without a date.
+    await run("log_growth", weight=3.4, date="2026-01-15")
+    await run("add_milestone", name="First swim")
+    tracker = entry.runtime_data
+    assert tracker.growth[0]["date"].isoformat() == "2026-01-15"
+    assert tracker.custom_milestones[0]["name"] == "First swim"
+    assert tracker.custom_milestones[0]["id"] not in tracker.milestones_done
 
 
 async def test_catalogue_is_consistent() -> None:

@@ -7,7 +7,7 @@ globalThis.HTMLElement = class {};
 globalThis.window = globalThis;
 globalThis.customElements = { get: () => true, define: () => {} };
 
-const { resolveParts, buttonList, resolveColor } = await import(
+const { resolveParts, buttonList, buttonGrid, buttonEntry, partEntries, resolveColor } = await import(
   "../../custom_components/baby_logger/frontend/baby-logger-card.js"
 );
 
@@ -49,6 +49,9 @@ test("the undo banner goes above the first part with buttons when not listed", (
   assert.deepEqual(resolveParts({ parts: ["header", "tiles", "summary"] }), ["header", "undo", "tiles", "summary"]);
   // Deleting a log entry can be undone too.
   assert.deepEqual(resolveParts({ parts: ["timeline", "log"] }), ["timeline", "undo", "log"]);
+  // So can adding or deleting growth measurements and milestones.
+  assert.deepEqual(resolveParts({ parts: ["summary", "growth", "log"] }), ["summary", "undo", "growth", "log"]);
+  assert.deepEqual(resolveParts({ parts: ["milestones"] }), ["undo", "milestones"]);
   // Nothing to undo from.
   assert.deepEqual(resolveParts({ parts: ["summary", "trends"] }), ["summary", "trends"]);
   // An explicit position is kept.
@@ -76,6 +79,11 @@ test("default quick buttons", () => {
   );
   assert.deepEqual(
     buttons.map((b) => b.columns),
+    [12, 4, 4, 4, 4, 4, 4, 12]
+  );
+  assert.deepEqual(buttonGrid({}), { perRow: 3, columns: 12 });
+  assert.deepEqual(
+    buttons.map((b) => b.span),
     [12, 4, 4, 4, 4, 4, 4, 12]
   );
   assert.equal(buttons[1].name, null);
@@ -118,4 +126,31 @@ test("colours", () => {
   // Values that could break out of the style attribute are not used.
   assert.equal(resolveColor('red;" onclick="x'), "var(--primary-color)");
   assert.equal(resolveColor("red; background: url(x)", "grey"), "grey");
+});
+
+test("buttons per row that don't divide 12 still fill the row", () => {
+  for (const perRow of [5, 7, 8, 9, 10, 11]) {
+    const grid = buttonGrid({ buttons_columns: perRow });
+    assert.equal(grid.columns % 12, 0);
+    assert.equal(grid.columns % perRow, 0);
+    const buttons = buttonList({ buttons_columns: perRow, buttons: ["diaper_wet", { action: "feed_left", columns: 6 }, "sleep"] });
+    // An even share of the row, half a row and the full-width sleep button.
+    assert.deepEqual(
+      buttons.map((b) => b.span),
+      [grid.columns / perRow, grid.columns / 2, grid.columns]
+    );
+  }
+  assert.deepEqual(buttonGrid({ buttons_columns: 5 }), { perRow: 5, columns: 60 });
+});
+
+test("parts and buttons are normalised the same way for the card and the editor", () => {
+  assert.deepEqual(partEntries([" growth", "growth", "nope", "log "]), ["growth", "log"]);
+  assert.deepEqual(buttonEntry(" undo "), { action: "undo" });
+  assert.deepEqual(buttonEntry({ action: "sleep ", name: "Nap" }), { action: "sleep", name: "Nap" });
+  assert.equal(buttonEntry({ action: "nope" }), null);
+  assert.equal(buttonEntry(null), null);
+  assert.deepEqual(
+    buttonList({ buttons: [" diaper_wet", "diaper_wet "] }).map((b) => b.action),
+    ["diaper_wet"]
+  );
 });

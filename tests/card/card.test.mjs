@@ -137,6 +137,10 @@ test("without parts the card looks like before", async () => {
   const { page, context, errors } = await mount({ snap: snapshot({ undo: { action: "diaper", expires: iso("15:00:25") } }) });
   assert.deepEqual(await partsOf(page), ["header", "undo", "tiles", "summary", "trends", "nights", "timeline", "log"]);
   assert.ok((await wsTypes(page)).includes("baby_logger/sleeps"));
+  // Growth and milestones are only requested by cards that show them.
+  const sub = await page.evaluate(() => window.hass.ws.find((m) => m.type === "baby_logger/subscribe"));
+  assert.equal(sub.growth, false);
+  assert.equal(sub.milestones, false);
   await shot(page, "legacy");
   assert.deepEqual(errors, []);
   await context.close();

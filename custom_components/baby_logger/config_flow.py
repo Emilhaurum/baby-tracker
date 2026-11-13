@@ -19,9 +19,12 @@ SCHEMA = vol.Schema(
 )
 
 
-def _entry_data(user_input: dict[str, Any], name: str) -> dict[str, Any]:
-    """Return the entry data: the name and, if given, the birth date."""
-    data: dict[str, Any] = {CONF_NAME: name}
+def _entry_data(
+    user_input: dict[str, Any], name: str, current: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Return the entry data with the name and birth date (removed when left empty)."""
+    data: dict[str, Any] = {**(current or {}), CONF_NAME: name}
+    data.pop(CONF_BIRTH_DATE, None)
     if birth_date := user_input.get(CONF_BIRTH_DATE):
         data[CONF_BIRTH_DATE] = birth_date
     return data
@@ -60,7 +63,7 @@ class BabyTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors[CONF_NAME] = "name_required"
             else:
                 return self.async_update_reload_and_abort(
-                    entry, title=name, data=_entry_data(user_input, name)
+                    entry, title=name, data=_entry_data(user_input, name, dict(entry.data))
                 )
         return self.async_show_form(
             step_id="reconfigure",
