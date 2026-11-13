@@ -45,6 +45,23 @@ def describe(data: dict[str, Any]) -> str:
         return f"😴 sleep added ({_clock(data.get('start'))}–{_clock(data.get('end'))})"
     if action == "update_sleep":
         return "😴 sleep changed"
+    if action == "growth":
+        parts = []
+        if data.get("weight_kg") is not None:
+            parts.append(f"{data['weight_kg']:g} kg")
+        if data.get("length_cm") is not None:
+            parts.append(f"{data['length_cm']:g} cm")
+        return f"📏 measured {', '.join(parts)}"
+    if action == "delete_growth":
+        return "deleted a measurement"
+    if action == "milestone":
+        return f"🏁 milestone: {data.get('milestone_name', '')}"
+    if action == "add_milestone":
+        return f"added milestone: {data.get('milestone_name', '')}"
+    if action == "clear_milestone":
+        return f"cleared milestone: {data.get('milestone_name', '')}"
+    if action == "delete_milestone":
+        return f"deleted milestone: {data.get('milestone_name', '')}"
     return str(action)
 
 

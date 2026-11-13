@@ -35,7 +35,7 @@ async def test_device_and_entities(hass: HomeAssistant, entry: MockConfigEntry) 
     assert (DOMAIN, entry.entry_id) in device.identifiers
     assert device.name == "Alex"
     entities = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
-    assert len(entities) == 12 + 7 + 1 + 1 + 1 + 2
+    assert len(entities) == 14 + 7 + 1 + 1 + 1 + 2
     assert all(e.device_id == device.id for e in entities)
 
 

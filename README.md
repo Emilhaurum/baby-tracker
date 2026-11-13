@@ -39,6 +39,10 @@ Everything is stored locally in Home Assistant.
   sleep timeline and an editable log. Choose which parts it shows and in which order, and
   add compact one-tap quick buttons for the phone.
   It is served by the integration, so there is nothing else to install.
+- **Growth**: log weight and length now and then and follow them on a chart over the
+  baby's age, for years. Metric (kg, cm) or imperial (lb + oz, in).
+- **Milestones**: a board of 31 common milestones (holding up their head, rolling,
+  sitting, crawling, first word, first steps …) with typical ages, plus your own.
 - **Several babies**: add the integration once per baby.
 - Logbook entries and a `baby_logger_event` event for every action, for use in automations.
 
@@ -66,8 +70,9 @@ Requires Home Assistant 2026.11 or newer.
 [![Open your Home Assistant instance and start setting up Baby Tracker.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=baby_logger)
 
 Go to **Settings → Devices & services → Add integration → Baby Tracker** and enter the
-baby's name. Repeat for each baby. To rename a baby later, choose **Reconfigure** on the
-integration entry.
+baby's name and, optionally, birth date (used to show the baby's age on the growth chart
+and milestones). Repeat for each baby. To rename a baby or change the birth date later,
+choose **Reconfigure** on the integration entry.
 
 ## Dashboard card
 
@@ -83,6 +88,8 @@ type: custom:baby-logger-card
 | `parts` | see below | The parts to show, in order: `header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`. When set, the `show_*` options are ignored. |
 | `buttons` | all, see below | The quick buttons of the `buttons` part, in order. |
 | `buttons_columns` | `3` | Quick buttons per row. |
+| `units` | `metric` | Units for growth: `metric` (kg, cm) or `imperial` (lb + oz, in). |
+| `growth_entries` | `5` | Measurements listed under the growth charts (0 hides the list). |
 | `show_summary` | `true` | Show last night and daytime sleep. |
 | `show_trends` | `true` | Show the diaper, feeding and sleep charts. |
 | `show_nights` | `true` | Show the night sleep chart. |
@@ -113,6 +120,8 @@ Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to dele
 | `nights` | The night sleep chart. |
 | `timeline` | The sleep timeline. |
 | `log` | The latest entries. |
+| `growth` | Weight and length charts, the latest measurements and a form to add one. |
+| `milestones` | The milestone board. |
 
 Without `parts` the card shows `header`, `undo` and `tiles`, followed by the parts turned
 on with the `show_*` options, so existing cards look the same. If `undo` isn't listed, the
@@ -168,6 +177,34 @@ type: custom:baby-logger-card
 parts: [header, timeline, buttons, nights, trends, log]
 ```
 
+### Growth and milestones
+
+Add `growth` and `milestones` to `parts` to show them:
+
+```yaml
+type: custom:baby-logger-card
+parts: [growth, milestones]
+units: imperial   # leave out for metric
+```
+
+**Growth**: tap **Add measurement**, pick the date (today by default) and enter the weight,
+the length or both. With `units: imperial` the weight is entered as pounds and ounces and the
+length in inches; everything is stored in metric, so you can switch units at any time. The
+charts show each measurement against the baby's age (or the date, if no birth date is set),
+from the first weeks to several years. Tap ✕ next to a measurement to delete it.
+
+**Milestones**: tap a milestone to mark it as reached (today, or pick the date), and tap it
+again to change the date or mark it as not reached. Under the board you can add your own,
+such as "First swim". Not-yet-reached milestones show a typical age: *Most by 9 months*
+is the age by which most children (75%) reach it according to the
+[CDC milestone checklists](https://www.cdc.gov/act-early/milestones/index.html);
+*Around 6 months* is a typical age for common "firsts" such as the first tooth. Every child
+develops at their own pace; these are a guide, not a test. Talk to your doctor if you are
+worried.
+
+![Growth chart](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/growth.png)
+![Milestone board](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/milestones.png)
+
 ### More examples
 
 A card with the last 30 nights, counting the night as 20:00–06:00:
@@ -216,6 +253,8 @@ Each baby gets a device with these entities (shown here for a baby called *Alex*
 | `sensor.alex_last_night_sleep` | Hours asleep last night, with wake-ups, awake time and 7-night averages. |
 | `sensor.alex_daytime_sleep` | Hours asleep during today's daytime, with naps and 7-day averages. |
 | `sensor.alex_last_woke_up` | When the baby last woke up. |
+| `sensor.alex_weight` | The latest weight (attribute `measured`: its date). Shown in kg, or lb on systems using US customary units. |
+| `sensor.alex_length` | The latest length / height (attribute `measured`). Shown in cm, or inches with US customary units. |
 | `switch.alex_sleeping` | On while asleep. Turn it on or off to log sleep. |
 | `button.alex_diaper_wet` / `_dirty` / `_wet_and_dirty` | Log a diaper. |
 | `button.alex_feed_left` / `_right` / `_bottle` | Log a feeding. |
@@ -241,6 +280,15 @@ and defaults to now, so you can log things after the fact.
 | `baby_logger.add_sleep` | `start`, `end` |
 | `baby_logger.undo` | |
 | `baby_logger.delete_event` | `event_id` |
+| `baby_logger.log_growth` | `weight`, `length` (at least one), `units` (`metric`: kg / cm, default; `imperial`: lb / in), `date`, `note` |
+| `baby_logger.delete_growth` | `event_id` (the measurement's `id`) |
+| `baby_logger.set_milestone` | `milestone` (e.g. `first_steps`, or the id of one you added), `date`, `note` |
+| `baby_logger.clear_milestone` | `milestone` |
+| `baby_logger.add_milestone` | `name`, `date` (leave out to add it as not reached yet), `note` |
+| `baby_logger.delete_milestone` | `milestone` (only ones you added) |
+
+`date` defaults to today. The built-in milestone keys are listed in
+[`milestones.py`](custom_components/baby_logger/milestones.py).
 
 The logging actions return the created entry. For example:
 
@@ -255,8 +303,9 @@ data:
 ### Automation example
 
 Every action fires a `baby_logger_event` with `config_entry_id`, `name`, `action`
-(`diaper`, `feeding`, `sleep`, `wake`, `undo`, `delete`, `add_sleep`, `update_sleep`)
-and details such as `type`, `side` or `minutes`.
+(`diaper`, `feeding`, `sleep`, `wake`, `undo`, `delete`, `add_sleep`, `update_sleep`,
+`growth`, `delete_growth`, `milestone`, `clear_milestone`, `add_milestone`,
+`delete_milestone`) and details such as `type`, `side`, `minutes` or `milestone_name`.
 
 ```yaml
 triggers:

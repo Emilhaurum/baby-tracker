@@ -26,6 +26,8 @@
  *       color: indigo         HA colour name or CSS colour
  *       columns: 12           width in a 12-column grid
  *   buttons_columns: 3        default buttons per row
+ *   units: metric             metric (kg, cm) or imperial (lb + oz, in) for growth
+ *   growth_entries: 5         measurements listed under the growth charts
  */
 
 const CARD_VERSION = "1.1.0";
@@ -50,7 +52,22 @@ const UNDO_LABELS = {
   add_sleep: "Sleep added",
   update_sleep: "Sleep changed",
   delete: "Entry deleted",
+  growth: "Measurement logged",
+  delete_growth: "Measurement deleted",
+  milestone: "Milestone saved",
+  clear_milestone: "Milestone cleared",
+  add_milestone: "Milestone added",
+  delete_milestone: "Milestone deleted",
 };
+const MILESTONE_CATEGORIES = {
+  movement: "Movement",
+  communication: "Communication",
+  social: "Social",
+  firsts: "Firsts",
+  custom: "Your milestones",
+};
+const KG_PER_LB = 0.45359237;
+const CM_PER_INCH = 2.54;
 
 const DEFAULTS = {
   show_summary: true,
@@ -66,11 +83,13 @@ const DEFAULTS = {
   night_days: 14,
   night_start: "",
   night_end: "",
+  units: "metric",
+  growth_entries: 5,
 };
 const NIGHTS_MAX = 366;
 
 // Parts of the card that can be shown, in the editor's default order.
-const PARTS = ["header", "tiles", "buttons", "undo", "summary", "trends", "nights", "timeline", "log"];
+const PARTS = ["header", "tiles", "buttons", "undo", "summary", "trends", "nights", "timeline", "log", "growth", "milestones"];
 const PART_LABELS = {
   header: "Header (name and today's counts)",
   tiles: "Diaper / feeding / sleep tiles",
@@ -81,6 +100,8 @@ const PART_LABELS = {
   nights: "Night sleep",
   timeline: "Sleep timeline",
   log: "Log",
+  growth: "Growth (weight and length)",
+  milestones: "Milestones",
 };
 // Parts that need the sleep history.
 const SLEEP_PARTS = ["nights", "timeline"];
@@ -552,6 +573,161 @@ export function resolveColor(color, fallback = "var(--primary-color)") {
   return /^[#\w\s(),.%-]+$/.test(value) ? value : fallback;
 }
 
+/** A YYYY-MM-DD date as a local Date at midnight. */
+function parseDay(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Today's (local) date as YYYY-MM-DD. */
+export function todayIso(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+const dateLabel = (iso) => parseDay(iso).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+
+/** A number typed in a form ("4,25" works too), or null. */
+const parseNumber = (value) => {
+  const n = parseFloat(String(value ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Weight in kg from the growth form: `weight` (kg) or `lb` + `oz`; null when empty. */
+export function parseWeight(form, units) {
+  if (units === "imperial") {
+    const lb = parseNumber(form.lb);
+    const oz = parseNumber(form.oz);
+    if (lb === null && oz === null) return null;
+    const pounds = (lb || 0) + (oz || 0) / 16;
+    return pounds > 0 ? pounds * KG_PER_LB : null;
+  }
+  const kg = parseNumber(form.weight);
+  return kg !== null && kg > 0 ? kg : null;
+}
+
+/** Length in cm from a value in cm (metric) or inches (imperial); null when empty. */
+export function parseLength(value, units) {
+  const n = parseNumber(value);
+  if (n === null || n <= 0) return null;
+  return units === "imperial" ? n * CM_PER_INCH : n;
+}
+
+/** "4.25 kg" or "9 lb 6.4 oz"; "" without a value. */
+export function formatWeight(kg, units) {
+  if (kg === null || kg === undefined) return "";
+  if (units === "imperial") {
+    const tenthsOfOunce = Math.round((kg / KG_PER_LB) * 160);
+    const lb = Math.floor(tenthsOfOunce / 160);
+    const oz = (tenthsOfOunce - lb * 160) / 10;
+    return `${lb} lb ${oz.toFixed(1).replace(/\.0$/, "")} oz`;
+  }
+  return `${Number(kg).toFixed(2)} kg`;
+}
+
+/** "55.5 cm" or "21.9 in"; "" without a value. */
+export function formatLength(cm, units) {
+  if (cm === null || cm === undefined) return "";
+  return units === "imperial" ? `${(cm / CM_PER_INCH).toFixed(1)} in` : `${Number(cm).toFixed(1)} cm`;
+}
+
+/** Age on a date: "at birth", "3 days", "5 weeks", "4 months", "1 year 3 months"; "" if unknown. */
+export function formatAge(birthIso, dateIso) {
+  if (!birthIso || !dateIso) return "";
+  const birth = parseDay(birthIso);
+  const day = parseDay(dateIso);
+  const days = Math.round((day - birth) / 86400000);
+  if (days < 0) return "";
+  if (days === 0) return "at birth";
+  if (days < 14) return plural(days, "day", "days");
+  if (days < 7 * 9) return plural(Math.floor(days / 7), "week", "weeks");
+  const months =
+    (day.getFullYear() - birth.getFullYear()) * 12 + day.getMonth() - birth.getMonth() - (day.getDate() < birth.getDate() ? 1 : 0);
+  if (months < 24) return plural(months, "month", "months");
+  const years = Math.floor(months / 12);
+  return months % 12 ? `${plural(years, "year", "years")} ${plural(months % 12, "month", "months")}` : plural(years, "year", "years");
+}
+
+const monthsLabel = (m) => (m < 24 || m % 12 ? plural(m, "month", "months") : plural(m / 12, "year", "years"));
+
+/**
+ * Points of a growth chart, oldest first. x is the age in months when the birth
+ * date is known, otherwise days since 1970; y is in the display units.
+ */
+export function growthPoints(growth, field, birthIso, units) {
+  const imperial = units === "imperial";
+  const toDisplay = field === "weight_kg" ? (v) => (imperial ? v / KG_PER_LB : v) : (v) => (imperial ? v / CM_PER_INCH : v);
+  const birth = birthIso ? parseDay(birthIso) : null;
+  return (growth || [])
+    .filter((g) => g[field] !== null && g[field] !== undefined)
+    .map((g) => {
+      const day = parseDay(g.date);
+      return { x: birth ? (day - birth) / 86400000 / 30.4375 : day.getTime() / 86400000, y: toDisplay(g[field]), date: g.date };
+    })
+    .sort((a, b) => a.x - b.x);
+}
+
+/** A round step that splits `range` into about `count` parts. */
+function niceStep(range, count) {
+  const raw = range / count;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((step) => step >= raw);
+}
+
+/** Line chart of growth points over age (months) or dates. */
+function growthChart(points, { byAge, unit, decimals }) {
+  if (!points.length) return `<div class="message">No measurements yet.</div>`;
+  const width = 300;
+  const height = 150;
+  const left = 34;
+  const right = 8;
+  const top = 10;
+  const bottom = 18;
+  let x0 = byAge ? 0 : points[0].x;
+  let x1 = points[points.length - 1].x;
+  if (byAge) x1 = Math.max(x1, 1);
+  if (x1 - x0 < 1) {
+    x0 -= 15;
+    x1 += 15;
+  }
+  const ys = points.map((p) => p.y);
+  let y0 = Math.min(...ys);
+  let y1 = Math.max(...ys);
+  const pad = Math.max((y1 - y0) * 0.1, y1 * 0.05, 0.1);
+  y0 = Math.max(0, y0 - pad);
+  y1 += pad;
+  const sx = (x) => left + ((x - x0) / (x1 - x0)) * (width - left - right);
+  const sy = (y) => height - bottom - ((y - y0) / (y1 - y0)) * (height - top - bottom);
+  let svg = "";
+  const yStep = niceStep(y1 - y0, 4);
+  for (let y = Math.ceil(y0 / yStep) * yStep; y <= y1; y += yStep) {
+    svg += `<line x1="${left}" x2="${width - right}" y1="${sy(y).toFixed(1)}" y2="${sy(y).toFixed(1)}" class="grid"/>`;
+    svg += `<text x="${left - 4}" y="${(sy(y) + 3).toFixed(1)}" class="yaxis">${Number(y.toFixed(2))}</text>`;
+  }
+  if (byAge) {
+    const step = [1, 2, 3, 6, 12, 24, 36].find((s) => (x1 - x0) / s <= 8) ?? 48;
+    for (let m = 0; m <= x1; m += step) {
+      const label = m >= 24 && m % 12 === 0 ? `${m / 12} y` : `${m} m`;
+      svg += `<text x="${sx(m).toFixed(1)}" y="${height - 4}" class="axis">${label}</text>`;
+    }
+  } else {
+    const start = new Date(x0 * 86400000);
+    const months = (x1 - x0) / 30.4375;
+    const step = [1, 2, 3, 6, 12, 24].find((s) => months / s <= 6) ?? 36;
+    const tick = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    for (; tick.getTime() / 86400000 <= x1; tick.setMonth(tick.getMonth() + step)) {
+      const x = sx(tick.getTime() / 86400000);
+      const label = tick.toLocaleDateString([], step >= 12 ? { year: "numeric" } : { month: "short", year: "2-digit" });
+      svg += `<text x="${x.toFixed(1)}" y="${height - 4}" class="axis">${esc(label)}</text>`;
+    }
+  }
+  svg += `<polyline class="series" points="${points.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ")}"/>`;
+  for (const p of points) {
+    svg += `<circle class="point" cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3"><title>${esc(dateLabel(p.date))}: ${p.y.toFixed(decimals)} ${unit}</title></circle>`;
+  }
+  return `<svg class="growth-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${svg}</svg>`;
+}
+
 function describe(e) {
   if (e.kind === "diaper") {
     const d = DIAPER[e.diaper_type] || DIAPER.wet;
@@ -624,6 +800,11 @@ class BabyTrackerCard extends HTMLElement {
     // Where the bottle amount form is open ("tiles" or "buttons"), or false.
     this._bottleOpen = false;
     this._bottleAmount = "";
+    // Open forms and what has been typed in them, kept across re-renders.
+    this._growthOpen = false;
+    this._growthForm = {};
+    this._milestoneEdit = null;
+    this._milestoneForm = {};
     // Bumped whenever a subscription is dropped, so stale in-flight ones are discarded.
     this._generation = 0;
     this._retryAt = 0;
@@ -774,6 +955,7 @@ class BabyTrackerCard extends HTMLElement {
   async _call(service, data = {}) {
     try {
       await this._hass.callService(DOMAIN, service, { config_entry_id: this._entryId, ...data });
+      return true;
     } catch (err) {
       this.dispatchEvent(
         new CustomEvent("hass-notification", {
@@ -782,6 +964,7 @@ class BabyTrackerCard extends HTMLElement {
           composed: true,
         })
       );
+      return false;
     }
   }
 
@@ -833,6 +1016,71 @@ class BabyTrackerCard extends HTMLElement {
       case "undo":
         this._call("undo");
         break;
+      case "growth-open":
+        this._growthOpen = !this._growthOpen;
+        this._growthForm = { date: todayIso() };
+        this._render();
+        this.shadowRoot.querySelector("#growth-weight, #growth-lb")?.focus();
+        break;
+      case "growth-cancel":
+        this._growthOpen = false;
+        this._render();
+        break;
+      case "growth-save":
+        this._saveGrowth();
+        break;
+      case "growth-delete": {
+        const m = (this._data?.growth || []).find((g) => g.id === value);
+        const units = this._config.units;
+        const text = m ? [formatWeight(m.weight_kg, units), formatLength(m.length_cm, units)].filter(Boolean).join(", ") : "";
+        if (window.confirm(`Delete the measurement${text ? ` (${text})` : ""}?`)) this._call("delete_growth", { event_id: value });
+        break;
+      }
+      case "milestone": {
+        const m = (this._data?.milestones || []).find((x) => x.key === value);
+        this._milestoneEdit = this._milestoneEdit === value ? null : value;
+        this._milestoneForm = { ...this._milestoneForm, date: m?.date || todayIso() };
+        this._render();
+        break;
+      }
+      case "milestone-save":
+        this._call("set_milestone", { milestone: value, date: this._milestoneForm.date || todayIso() }).then((ok) => {
+          if (ok) {
+            this._milestoneEdit = null;
+            this._render();
+          }
+        });
+        break;
+      case "milestone-clear":
+        this._milestoneEdit = null;
+        this._call("clear_milestone", { milestone: value });
+        break;
+      case "milestone-delete": {
+        const m = (this._data?.milestones || []).find((x) => x.key === value);
+        if (window.confirm(`Delete "${m ? m.name : "this milestone"}"?`)) {
+          this._milestoneEdit = null;
+          this._call("delete_milestone", { milestone: value });
+        }
+        break;
+      }
+      case "milestone-cancel":
+        this._milestoneEdit = null;
+        this._render();
+        break;
+      case "milestone-add": {
+        const name = (this._milestoneForm.name || "").trim();
+        if (!name) {
+          this.shadowRoot.querySelector("#milestone-name")?.focus();
+          break;
+        }
+        this._call("add_milestone", { name, date: this._milestoneForm.newDate || todayIso() }).then((ok) => {
+          if (ok) {
+            this._milestoneForm = { ...this._milestoneForm, name: "", newDate: "" };
+            this._render();
+          }
+        });
+        break;
+      }
       case "delete": {
         const event = (this._data?.events || []).find((e) => e.id === value);
         const text = event ? describe(event).text : "this entry";
@@ -846,10 +1094,15 @@ class BabyTrackerCard extends HTMLElement {
 
   _render() {
     if (!this.shadowRoot || !this._config) return;
-    // Keep focus and caret in the bottle amount field across re-renders.
+    // Keep focus and caret in a form field across re-renders.
     const active = this.shadowRoot.activeElement;
-    const keepFocus = active && active.id === "bottle-amount";
-    const caret = keepFocus ? [active.selectionStart, active.selectionEnd] : null;
+    const focusId = active && active.id ? active.id : null;
+    let caret = null;
+    try {
+      caret = focusId ? [active.selectionStart, active.selectionEnd] : null;
+    } catch (_err) {
+      // not every input type has a selection
+    }
     let body;
     if (this._error) {
       body = `<div class="message error">${esc(this._error)}</div>`;
@@ -859,7 +1112,19 @@ class BabyTrackerCard extends HTMLElement {
       body = this._renderData(this._data);
     }
     this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card>${body}</ha-card>`;
-    this.shadowRoot.querySelector("ha-card").addEventListener("click", (ev) => this._handleClick(ev));
+    const card = this.shadowRoot.querySelector("ha-card");
+    card.addEventListener("click", (ev) => this._handleClick(ev));
+    // Remember what is typed in the forms ([data-form] / [data-field] inputs).
+    card.addEventListener("input", (ev) => {
+      const { form, field } = ev.target.dataset;
+      if (form === "growth") this._growthForm[field] = ev.target.value;
+      if (form === "milestone") this._milestoneForm[field] = ev.target.value;
+    });
+    card.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" || ev.target.tagName !== "INPUT") return;
+      const submit = ev.target.closest("[data-submit]")?.dataset.submit;
+      if (submit) this.shadowRoot.querySelector(`[data-action="${submit}"]`)?.click();
+    });
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount) {
       amount.value = this._bottleAmount;
@@ -869,15 +1134,37 @@ class BabyTrackerCard extends HTMLElement {
       amount.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") this.shadowRoot.querySelector('[data-action="bottle-log"]').click();
       });
-      if (keepFocus) {
-        amount.focus();
-        try {
-          amount.setSelectionRange(caret[0], caret[1]);
-        } catch (_err) {
-          // number inputs don't support selection ranges in every browser
-        }
+    }
+    const focused = focusId ? this.shadowRoot.getElementById(focusId) : null;
+    if (focused) {
+      focused.focus();
+      try {
+        if (caret) focused.setSelectionRange(caret[0], caret[1]);
+      } catch (_err) {
+        // number and date inputs don't support selection ranges
       }
     }
+  }
+
+  _saveGrowth() {
+    const form = this._growthForm;
+    const units = this._config.units;
+    const weight = parseWeight(form, units);
+    const length = parseLength(units === "imperial" ? form.inches : form.cm, units);
+    if (weight === null && length === null) {
+      this.shadowRoot.querySelector("#growth-weight, #growth-lb")?.focus();
+      return;
+    }
+    const data = { date: form.date || todayIso() };
+    if (weight !== null) data.weight = Math.round(weight * 1000) / 1000;
+    if (length !== null) data.length = Math.round(length * 10) / 10;
+    this._call("log_growth", data).then((ok) => {
+      if (ok) {
+        this._growthOpen = false;
+        this._growthForm = {};
+        this._render();
+      }
+    });
   }
 
   _renderData(d) {
@@ -922,6 +1209,8 @@ class BabyTrackerCard extends HTMLElement {
         </div>`;
       },
       log: () => this._logHtml(d, now),
+      growth: () => this._growthHtml(d),
+      milestones: () => this._milestonesHtml(d),
     };
     return this._parts()
       .map((part) => parts[part]())
@@ -1061,6 +1350,117 @@ class BabyTrackerCard extends HTMLElement {
       })
       .join("");
     return `<div class="quick">${buttons}</div>${this._bottleForm("buttons")}`;
+  }
+
+  _growthHtml(d) {
+    const units = this._config.units === "imperial" ? "imperial" : "metric";
+    const imperial = units === "imperial";
+    const growth = d.growth || [];
+    const latest = (field) => [...growth].reverse().find((g) => g[field] !== null && g[field] !== undefined);
+    const when = (g) => (g ? `${dateLabel(g.date)}${d.birth_date ? ` · ${formatAge(d.birth_date, g.date)}` : ""}` : "No measurements yet");
+    const weight = latest("weight_kg");
+    const length = latest("length_cm");
+    const byAge = Boolean(d.birth_date);
+    const charts = [
+      ["Weight", "weight_kg", imperial ? "lb" : "kg", 2, "#26a69a"],
+      ["Length", "length_cm", imperial ? "in" : "cm", 1, "#5c6bc0"],
+    ]
+      .map(
+        ([title, field, unit, decimals, color]) =>
+          `<div class="chart" style="--accent:${color}"><div class="chart-title">${title} (${unit})</div>
+            ${growthChart(growthPoints(growth, field, d.birth_date, units), { byAge, unit, decimals })}</div>`
+      )
+      .join("");
+
+    const f = this._growthForm;
+    const input = (id, field, attrs) =>
+      `<input id="${id}" data-form="growth" data-field="${field}" value="${esc(f[field] ?? "")}" ${attrs}>`;
+    const number = (id, field, step, placeholder) =>
+      input(id, field, `type="number" inputmode="decimal" min="0" step="${step}" placeholder="${placeholder}"`);
+    const form = this._growthOpen
+      ? `<div class="form" data-submit="growth-save">
+          <label>Date ${input("growth-date", "date", `type="date" max="${todayIso()}"`)}</label>
+          ${
+            imperial
+              ? `<label>Weight<span class="pair">${number("growth-lb", "lb", "1", "lb")}${number("growth-oz", "oz", "0.1", "oz")}</span></label>
+                 <label>Length (in) ${number("growth-in", "inches", "0.1", "in")}</label>`
+              : `<label>Weight (kg) ${number("growth-weight", "weight", "0.01", "kg")}</label>
+                 <label>Length (cm) ${number("growth-cm", "cm", "0.1", "cm")}</label>`
+          }
+          <div class="actions"><button class="small primary" data-action="growth-save">Save</button><button class="small" data-action="growth-cancel">Cancel</button></div>
+        </div>`
+      : `<div class="form-toggle"><button class="small" data-action="growth-open"><ha-icon icon="mdi:plus"></ha-icon>Add measurement</button></div>`;
+
+    const rows = [...growth]
+      .reverse()
+      .slice(0, clampInt(this._config.growth_entries, 0, 100, 5))
+      .map((g) => {
+        const values = [formatWeight(g.weight_kg, units), formatLength(g.length_cm, units)].filter(Boolean).join(" · ");
+        return `<li><span class="emoji">📏</span><span class="text">${esc(values)}</span><span class="time">${esc(when(g))}</span>
+            <button class="icon" title="Delete" aria-label="Delete" data-action="growth-delete" data-value="${esc(g.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
+      })
+      .join("");
+
+    return `
+        <div class="section">
+          <div class="section-title">Growth</div>
+          <div class="growth-latest">
+            <div><div class="label"><ha-icon icon="mdi:scale-bathroom"></ha-icon>Weight</div>
+              <div class="value">${weight ? esc(formatWeight(weight.weight_kg, units)) : "–"}</div>
+              <div class="sub">${esc(when(weight))}</div></div>
+            <div><div class="label"><ha-icon icon="mdi:human-male-height"></ha-icon>Length</div>
+              <div class="value">${length ? esc(formatLength(length.length_cm, units)) : "–"}</div>
+              <div class="sub">${esc(when(length))}</div></div>
+          </div>
+          <div class="charts">${charts}</div>
+          ${form}
+          ${rows ? `<ul class="log">${rows}</ul>` : ""}
+        </div>`;
+  }
+
+  _milestonesHtml(d) {
+    const all = d.milestones || [];
+    const reached = all.filter((m) => m.date).length;
+    const form = this._milestoneForm;
+    const tile = (m) => {
+      const done = Boolean(m.date);
+      let sub = "";
+      if (done) sub = `${dateLabel(m.date)}${d.birth_date ? ` · ${formatAge(d.birth_date, m.date)}` : ""}`;
+      else if (m.months) sub = `${m.cdc ? "Most by" : "Around"} ${monthsLabel(m.months)}`;
+      const editing = this._milestoneEdit === m.key;
+      const button = `<button class="ms${done ? " done" : ""}${editing ? " editing" : ""}" data-action="milestone" data-value="${esc(m.key)}">
+          <ha-icon icon="${done ? "mdi:check-circle" : "mdi:circle-outline"}"></ha-icon>
+          <span class="ms-text"><span class="ms-name">${esc(m.name)}</span>${sub ? `<span class="ms-sub">${esc(sub)}</span>` : ""}</span>
+        </button>`;
+      if (!editing) return button;
+      return `${button}<div class="form ms-edit" data-submit="milestone-save">
+          <label>Reached on
+            <input id="milestone-date" type="date" max="${todayIso()}" data-form="milestone" data-field="date" value="${esc(form.date ?? todayIso())}"></label>
+          <div class="actions">
+            <button class="small primary" data-action="milestone-save" data-value="${esc(m.key)}">${done ? "Save" : "Reached"}</button>
+            ${done ? `<button class="small" data-action="milestone-clear" data-value="${esc(m.key)}">Not reached</button>` : ""}
+            ${m.custom ? `<button class="small" data-action="milestone-delete" data-value="${esc(m.key)}">Delete</button>` : ""}
+            <button class="small" data-action="milestone-cancel">Cancel</button>
+          </div>
+        </div>`;
+    };
+    const groups = Object.entries(MILESTONE_CATEGORIES)
+      .map(([category, title]) => {
+        const items = all.filter((m) => m.category === category);
+        if (!items.length) return "";
+        return `<div class="ms-group"><div class="ms-group-title">${title}</div><div class="ms-grid">${items.map(tile).join("")}</div></div>`;
+      })
+      .join("");
+    return `
+        <div class="section">
+          <div class="section-title">Milestones<span class="count">${reached} of ${all.length} reached</span></div>
+          ${groups}
+          <div class="form" data-submit="milestone-add">
+            <label>Add your own <input id="milestone-name" type="text" maxlength="100" placeholder="e.g. First swim" data-form="milestone" data-field="name" value="${esc(form.name ?? "")}"></label>
+            <label>Reached on <input id="milestone-new-date" type="date" max="${todayIso()}" data-form="milestone" data-field="newDate" value="${esc(form.newDate || todayIso())}"></label>
+            <div class="actions"><button class="small primary" data-action="milestone-add"><ha-icon icon="mdi:plus"></ha-icon>Add</button></div>
+          </div>
+        </div>`;
   }
 
   _summaryHtml(d) {
@@ -1217,6 +1617,37 @@ const STYLE = `
   .chart line.avg { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.7; }
   .chart text.yaxis { text-anchor: end; }
   .legend i.dash { background: none; border-top: 2px dashed var(--primary-text-color); height: 0; width: 14px; opacity: 0.7; vertical-align: 3px; }
+  .growth-latest { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .growth-latest > div { border-radius: 12px; padding: 12px; background: var(--secondary-background-color); }
+  .growth-latest .label { display: flex; align-items: center; gap: 6px; color: var(--secondary-text-color); font-size: 0.9em; }
+  .growth-latest .value { font-size: 1.4em; font-weight: 500; }
+  .chart svg.growth-chart { max-height: 200px; }
+  .chart circle.point { fill: var(--accent); }
+  .chart polyline.series { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; align-items: end; margin-top: 12px;
+    padding: 12px; border-radius: 12px; background: var(--secondary-background-color); }
+  .form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; color: var(--secondary-text-color); }
+  .form input { min-width: 0; padding: 8px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--card-background-color);
+    color: var(--primary-text-color); font: inherit; font-size: 1rem; }
+  .form .pair { display: flex; gap: 4px; }
+  .form .pair input { flex: 1; }
+  .form .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .form-toggle { margin-top: 12px; }
+  .section-title .count { font-weight: 400; color: var(--secondary-text-color); font-size: 0.85em; margin-left: 6px; }
+  .ms-group { margin-top: 12px; }
+  .ms-group:first-of-type { margin-top: 0; }
+  .ms-group-title { font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+  .ms { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 10px; border-radius: 10px; text-align: left;
+    background: var(--secondary-background-color); border: 2px solid transparent; }
+  .ms.done { background: color-mix(in srgb, var(--success-color, #43a047) 14%, var(--secondary-background-color)); }
+  .ms.editing { border-color: var(--primary-color); }
+  .ms ha-icon { --mdc-icon-size: 22px; color: var(--secondary-text-color); flex: none; }
+  .ms.done ha-icon { color: var(--success-color, #43a047); }
+  .ms-text { display: flex; flex-direction: column; min-width: 0; }
+  .ms-name { font-size: 0.9em; line-height: 1.2; }
+  .ms-sub { font-size: 0.75em; color: var(--secondary-text-color); }
+  .ms-edit { grid-column: 1 / -1; margin-top: 0; }
   .log { list-style: none; margin: 0; padding: 0; }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .log li.day { border: none; padding-top: 10px; font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1383,6 +1814,11 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>Night from <input type="time" data-key="night_start" value="${esc(c.night_start)}"> to <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
         <small>Leave the night times empty to use the integration's Night starts / Night ends settings.</small>
         <label>Log entries <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
+        <label>Growth units <select data-key="units">
+          <option value="metric" ${c.units === "imperial" ? "" : "selected"}>Metric (kg, cm)</option>
+          <option value="imperial" ${c.units === "imperial" ? "selected" : ""}>Imperial (lb + oz, in)</option>
+        </select></label>
+        <label>Measurements listed under the growth charts <input type="number" min="0" max="100" data-key="growth_entries" value="${esc(c.growth_entries)}"></label>
         <label>Days of history <input type="number" min="1" max="31" data-key="days" value="${esc(c.days)}"></label>
       </div>`;
     this.querySelectorAll("[data-key]").forEach((el) => {

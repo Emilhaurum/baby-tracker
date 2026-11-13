@@ -56,6 +56,18 @@ function snapshot(overrides = {}) {
       { id: "d2", kind: "diaper", start: iso("14:10"), end: null, diaper_type: "wet" },
       { id: "f2", kind: "feeding", start: iso("14:20"), end: iso("14:35"), sides: [{ side: "left", time: iso("14:20") }], amount_ml: null },
     ],
+    birth_date: "2026-01-15",
+    growth: [
+      { id: "g1", date: "2026-01-15", weight_kg: 3.4, length_cm: 50.5, note: null },
+      { id: "g2", date: "2026-03-01", weight_kg: 4.9, length_cm: 56, note: null },
+      { id: "g3", date: "2026-05-01", weight_kg: 6.1, length_cm: null, note: null },
+    ],
+    milestones: [
+      { key: "head_up_tummy", name: "Holds head up on tummy", category: "movement", months: 2, cdc: true, custom: false, date: "2026-03-10", note: null },
+      { key: "crawls", name: "Crawls", category: "movement", months: 9, cdc: false, custom: false, date: null, note: null },
+      { key: "first_smile", name: "First social smile", category: "social", months: 2, cdc: true, custom: false, date: "2026-02-20", note: null },
+      { key: "custom_abc", name: "First swim", category: "custom", months: null, cdc: false, custom: true, date: "2026-04-02", note: null },
+    ],
     ...overrides,
   };
 }
@@ -324,5 +336,114 @@ test("editor writes parts and buttons", async () => {
     parts: ["header", "undo", "tiles", "summary", "trends", "nights", "timeline", "log"],
     log_entries: 5,
   });
+  await context.close();
+});
+
+test("growth: latest values, charts and adding a metric measurement", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["growth"] } });
+  const card = page.locator("baby-logger-card");
+  assert.deepEqual(await card.locator(".growth-latest .value").allTextContents(), ["6.10 kg", "56.0 cm"]);
+  assert.deepEqual(await card.locator(".growth-latest .sub").allTextContents(), [
+    "May 1, 2026 · 3 months",
+    "Mar 1, 2026 · 6 weeks",
+  ]);
+  assert.equal(await card.locator("svg.growth-chart").count(), 2);
+  assert.equal(await card.locator("svg.growth-chart").first().locator("circle.point").count(), 3);
+  assert.equal(await card.locator("svg.growth-chart").nth(1).locator("circle.point").count(), 2);
+  // Age along the bottom.
+  assert.ok((await card.locator("svg.growth-chart").first().locator("text.axis").allTextContents()).includes("3 m"));
+  await shot(page, "growth");
+
+  await card.locator('[data-action="growth-open"]').click();
+  assert.equal(await card.locator("#growth-date").inputValue(), "2026-05-05");
+  await card.locator("#growth-weight").fill("6.5");
+  // Typing survives a re-render (the card updates every minute).
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(20);
+  assert.equal(await card.locator("#growth-weight").inputValue(), "6.5");
+  await card.locator("#growth-cm").fill("61");
+  await card.locator("#growth-cm").press("Enter");
+  assert.deepEqual((await calls(page)).at(-1), [
+    "log_growth",
+    { config_entry_id: "e1", date: "2026-05-05", weight: 6.5, length: 61 },
+  ]);
+  assert.equal(await card.locator(".form").count(), 0);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await card.locator('[data-action="growth-delete"][data-value="g3"]').click();
+  assert.deepEqual((await calls(page)).at(-1), ["delete_growth", { config_entry_id: "e1", event_id: "g3" }]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("growth in imperial units", async () => {
+  const { page, context } = await mount({ config: { parts: ["growth"], units: "imperial" } });
+  const card = page.locator("baby-logger-card");
+  assert.deepEqual(await card.locator(".growth-latest .value").allTextContents(), ["13 lb 7.2 oz", "22.0 in"]);
+  assert.equal(await card.locator(".chart-title").first().textContent(), "Weight (lb)");
+  await card.locator('[data-action="growth-open"]').click();
+  await card.locator("#growth-lb").fill("14");
+  await card.locator("#growth-oz").fill("8");
+  await card.locator("#growth-in").fill("24.5");
+  await card.locator('[data-action="growth-save"]').click();
+  // Sent in metric.
+  assert.deepEqual((await calls(page)).at(-1), [
+    "log_growth",
+    { config_entry_id: "e1", date: "2026-05-05", weight: 6.577, length: 62.2 },
+  ]);
+  await context.close();
+});
+
+test("growth without a birth date uses dates", async () => {
+  const { page, context } = await mount({ config: { parts: ["growth"] }, snap: snapshot({ birth_date: null }) });
+  const card = page.locator("baby-logger-card");
+  assert.deepEqual(await card.locator(".growth-latest .sub").allTextContents(), ["May 1, 2026", "Mar 1, 2026"]);
+  assert.ok(!(await card.locator("svg.growth-chart text.axis").allTextContents()).includes("3 m"));
+  await context.close();
+});
+
+test("milestone board", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["milestones"] } });
+  const card = page.locator("baby-logger-card");
+  assert.equal(await card.locator(".section-title .count").textContent(), "3 of 4 reached");
+  assert.deepEqual(await card.locator(".ms-group-title").allTextContents(), ["Movement", "Social", "Your milestones"]);
+  assert.equal(await card.locator('.ms.done[data-value="head_up_tummy"] .ms-sub').textContent(), "Mar 10, 2026 · 7 weeks");
+  assert.equal(await card.locator('.ms[data-value="crawls"] .ms-sub').textContent(), "Around 9 months");
+  assert.equal(await card.locator('.ms[data-value="crawls"].done').count(), 0);
+  await shot(page, "milestones");
+
+  // Reach a milestone (today by default, or another date).
+  await card.locator('.ms[data-value="crawls"]').click();
+  assert.equal(await card.locator("#milestone-date").inputValue(), "2026-05-05");
+  await card.locator("#milestone-date").fill("2026-05-01");
+  await card.locator('[data-action="milestone-save"]').click();
+  assert.deepEqual((await calls(page)).at(-1), [
+    "set_milestone",
+    { config_entry_id: "e1", milestone: "crawls", date: "2026-05-01" },
+  ]);
+
+  // Mark a reached milestone as not reached.
+  await card.locator('.ms[data-value="first_smile"]').click();
+  assert.equal(await card.locator("#milestone-date").inputValue(), "2026-02-20");
+  await card.locator('[data-action="milestone-clear"]').click();
+  assert.deepEqual((await calls(page)).at(-1), ["clear_milestone", { config_entry_id: "e1", milestone: "first_smile" }]);
+
+  // Add one of your own.
+  await card.locator("#milestone-name").fill("First trip to the beach");
+  await card.locator("#milestone-name").press("Enter");
+  assert.deepEqual((await calls(page)).at(-1), [
+    "add_milestone",
+    { config_entry_id: "e1", name: "First trip to the beach", date: "2026-05-05" },
+  ]);
+  assert.equal(await card.locator("#milestone-name").inputValue(), "");
+
+  // Only your own can be deleted.
+  await card.locator('.ms[data-value="head_up_tummy"]').click();
+  assert.equal(await card.locator('[data-action="milestone-delete"]').count(), 0);
+  await card.locator('.ms[data-value="custom_abc"]').click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await card.locator('[data-action="milestone-delete"]').click();
+  assert.deepEqual((await calls(page)).at(-1), ["delete_milestone", { config_entry_id: "e1", milestone: "custom_abc" }]);
+  assert.deepEqual(errors, []);
   await context.close();
 });

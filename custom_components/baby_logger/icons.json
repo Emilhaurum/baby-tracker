@@ -1,28 +1,55 @@
 {
   "entity": {
     "button": {
-      "diaper_wet": { "default": "mdi:water" },
-      "diaper_dirty": { "default": "mdi:emoticon-poop" },
-      "diaper_both": { "default": "mdi:water-plus" },
-      "feed_left": { "default": "mdi:arrow-left-bold-circle" },
-      "feed_right": { "default": "mdi:arrow-right-bold-circle" },
-      "feed_bottle": { "default": "mdi:baby-bottle" },
-      "undo": { "default": "mdi:undo-variant" }
+      "diaper_wet": {
+        "default": "mdi:water"
+      },
+      "diaper_dirty": {
+        "default": "mdi:emoticon-poop"
+      },
+      "diaper_both": {
+        "default": "mdi:water-plus"
+      },
+      "feed_left": {
+        "default": "mdi:arrow-left-bold-circle"
+      },
+      "feed_right": {
+        "default": "mdi:arrow-right-bold-circle"
+      },
+      "feed_bottle": {
+        "default": "mdi:baby-bottle"
+      },
+      "undo": {
+        "default": "mdi:undo-variant"
+      }
     },
     "calendar": {
-      "sleep": { "default": "mdi:sleep" }
+      "sleep": {
+        "default": "mdi:sleep"
+      }
     },
     "number": {
-      "feeding_merge_window": { "default": "mdi:timer-sync-outline" }
+      "feeding_merge_window": {
+        "default": "mdi:timer-sync-outline"
+      }
     },
     "sensor": {
-      "last_diaper": { "default": "mdi:human-baby-changing-table" },
+      "last_diaper": {
+        "default": "mdi:human-baby-changing-table"
+      },
       "last_diaper_type": {
         "default": "mdi:water",
-        "state": { "dirty": "mdi:emoticon-poop", "both": "mdi:water-plus" }
+        "state": {
+          "dirty": "mdi:emoticon-poop",
+          "both": "mdi:water-plus"
+        }
       },
-      "diapers_today": { "default": "mdi:human-baby-changing-table" },
-      "last_feeding": { "default": "mdi:baby-bottle-outline" },
+      "diapers_today": {
+        "default": "mdi:human-baby-changing-table"
+      },
+      "last_feeding": {
+        "default": "mdi:baby-bottle-outline"
+      },
       "last_feeding_side": {
         "default": "mdi:arrow-left-right",
         "state": {
@@ -33,30 +60,92 @@
       },
       "next_feeding_side": {
         "default": "mdi:arrow-left-right-bold",
-        "state": { "left": "mdi:arrow-left-bold-circle", "right": "mdi:arrow-right-bold-circle" }
+        "state": {
+          "left": "mdi:arrow-left-bold-circle",
+          "right": "mdi:arrow-right-bold-circle"
+        }
       },
-      "feedings_today": { "default": "mdi:baby-bottle-outline" },
-      "bottle_today": { "default": "mdi:baby-bottle" },
-      "sleep_today": { "default": "mdi:sleep" },
-      "last_night_sleep": { "default": "mdi:weather-night" },
-      "daytime_sleep": { "default": "mdi:weather-sunny" },
-      "last_woke_up": { "default": "mdi:weather-sunny" }
+      "feedings_today": {
+        "default": "mdi:baby-bottle-outline"
+      },
+      "bottle_today": {
+        "default": "mdi:baby-bottle"
+      },
+      "sleep_today": {
+        "default": "mdi:sleep"
+      },
+      "last_night_sleep": {
+        "default": "mdi:weather-night"
+      },
+      "daytime_sleep": {
+        "default": "mdi:weather-sunny"
+      },
+      "last_woke_up": {
+        "default": "mdi:weather-sunny"
+      },
+      "weight": {
+        "default": "mdi:scale-bathroom"
+      },
+      "length": {
+        "default": "mdi:human-male-height"
+      }
     },
     "switch": {
-      "sleeping": { "default": "mdi:sleep-off", "state": { "on": "mdi:sleep" } }
+      "sleeping": {
+        "default": "mdi:sleep-off",
+        "state": {
+          "on": "mdi:sleep"
+        }
+      }
     },
     "time": {
-      "night_start": { "default": "mdi:weather-night" },
-      "night_end": { "default": "mdi:weather-sunset-up" }
+      "night_start": {
+        "default": "mdi:weather-night"
+      },
+      "night_end": {
+        "default": "mdi:weather-sunset-up"
+      }
     }
   },
   "services": {
-    "log_diaper": { "service": "mdi:human-baby-changing-table" },
-    "log_feeding": { "service": "mdi:baby-bottle-outline" },
-    "start_sleep": { "service": "mdi:sleep" },
-    "end_sleep": { "service": "mdi:weather-sunny" },
-    "add_sleep": { "service": "mdi:calendar-plus" },
-    "undo": { "service": "mdi:undo-variant" },
-    "delete_event": { "service": "mdi:delete" }
+    "log_diaper": {
+      "service": "mdi:human-baby-changing-table"
+    },
+    "log_feeding": {
+      "service": "mdi:baby-bottle-outline"
+    },
+    "start_sleep": {
+      "service": "mdi:sleep"
+    },
+    "end_sleep": {
+      "service": "mdi:weather-sunny"
+    },
+    "add_sleep": {
+      "service": "mdi:calendar-plus"
+    },
+    "undo": {
+      "service": "mdi:undo-variant"
+    },
+    "delete_event": {
+      "service": "mdi:delete"
+    },
+    "log_growth": {
+      "service": "mdi:scale-bathroom"
+    },
+    "delete_growth": {
+      "service": "mdi:delete"
+    },
+    "set_milestone": {
+      "service": "mdi:flag-checkered"
+    },
+    "clear_milestone": {
+      "service": "mdi:flag-remove"
+    },
+    "add_milestone": {
+      "service": "mdi:flag-plus"
+    },
+    "delete_milestone": {
+      "service": "mdi:delete"
+    }
   }
 }

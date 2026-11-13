@@ -13,10 +13,11 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTime, UnitOfVolume
+from homeassistant.const import UnitOfLength, UnitOfMass, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 
 from . import BabyTrackerConfigEntry
 from .const import DIAPER_TYPES, FEEDING_SIDES, KIND_DIAPER, KIND_FEEDING, SIDE_LEFT, SIDE_RIGHT
@@ -47,6 +48,10 @@ def _last_wake(t: BabyTracker) -> datetime | None:
     return t.last_wake
 
 
+def _measured_attrs(measurement: dict[str, Any] | None) -> dict[str, Any]:
+    return {"measured": measurement["date"].isoformat() if measurement else None}
+
+
 def _summary_attrs(summary: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in summary.items() if k != "asleep"}
 
@@ -57,6 +62,9 @@ class BabySensorDescription(SensorEntityDescription):
 
     value_fn: Callable[[BabyTracker], Any]
     attrs_fn: Callable[[BabyTracker], dict[str, Any]] | None = None
+    # Unit to show by default when Home Assistant uses US customary units and
+    # doesn't convert this device class itself (it does for distance, not weight).
+    us_customary_unit: str | None = None
     # Daily totals that can go down (undo / delete) use TOTAL with a midnight reset.
     resets_daily: bool = False
 
@@ -154,6 +162,28 @@ SENSORS: tuple[BabySensorDescription, ...] = (
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=_last_wake,
     ),
+    # Latest growth measurements; Home Assistant converts them to the user's unit system.
+    BabySensorDescription(
+        key="weight",
+        translation_key="weight",
+        device_class=SensorDeviceClass.WEIGHT,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfMass.KILOGRAMS,
+        us_customary_unit=UnitOfMass.POUNDS,
+        suggested_display_precision=2,
+        value_fn=lambda t: g["weight_kg"] if (g := t.latest_growth("weight_kg")) else None,
+        attrs_fn=lambda t: _measured_attrs(t.latest_growth("weight_kg")),
+    ),
+    BabySensorDescription(
+        key="length",
+        translation_key="length",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        suggested_display_precision=1,
+        value_fn=lambda t: g["length_cm"] if (g := t.latest_growth("length_cm")) else None,
+        attrs_fn=lambda t: _measured_attrs(t.latest_growth("length_cm")),
+    ),
 )
 
 # Large attributes that should not be stored in the recorder history.
@@ -179,6 +209,14 @@ class BabySensor(BabyTrackerEntity, SensorEntity):
     def native_value(self) -> Any:
         """Return the value."""
         return self.entity_description.value_fn(self.tracker)
+
+    @property
+    def suggested_unit_of_measurement(self) -> str | None:
+        """Suggest pounds for weight on systems using US customary units."""
+        unit = self.entity_description.us_customary_unit
+        if unit and self.hass is not None and self.hass.config.units is US_CUSTOMARY_SYSTEM:
+            return unit
+        return super().suggested_unit_of_measurement
 
     @property
     def last_reset(self) -> datetime | None:

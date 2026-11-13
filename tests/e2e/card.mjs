@@ -117,6 +117,24 @@ await page.evaluate(async () => {
   document.body.appendChild(el);
 });
 
+// Quick buttons, growth and milestones on a second view.
+await page.goto(`${base}/dashboard-baby/growth`);
+const growthCard = page.locator("baby-logger-card");
+await growthCard.locator(".growth-latest").waitFor({ timeout: 30000 });
+const latest = await growthCard.locator(".growth-latest .value").allTextContents();
+if (latest.join("|") !== "5.90 kg|58.4 cm") fail(`latest growth: ${latest.join("|")}`);
+if ((await growthCard.locator(".qb").count()) < 7) fail("quick buttons missing");
+if ((await growthCard.locator(".ms.done").count()) !== 2) fail("expected 2 reached milestones");
+await growthCard.locator('.ms[data-value="crawls"]').click();
+await growthCard.locator('[data-action="milestone-save"]').click();
+await page.waitForTimeout(1000);
+if ((await growthCard.locator(".ms.done").count()) !== 3) fail("marking a milestone as reached did not stick");
+await growthCard.locator('[data-action="growth-open"]').click();
+await growthCard.locator("#growth-weight").fill("6.2");
+await growthCard.locator('[data-action="growth-save"]').click();
+await page.waitForTimeout(1000);
+if (!(await growthCard.locator(".growth-latest .value").first().textContent()).includes("6.20 kg")) fail("new measurement not shown");
+
 await browser.close();
 if (errors.length) fail(`page errors: ${errors.join(" | ")}`);
 if (!process.exitCode) console.log("card e2e OK");

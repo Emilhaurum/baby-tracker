@@ -6,7 +6,7 @@ import bisect
 from collections.abc import Callable
 import copy
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 import logging
 from typing import Any
 import uuid
@@ -30,8 +30,12 @@ from .const import (
     KIND_DIAPER,
     KIND_FEEDING,
     KIND_SLEEP,
+    MAX_LENGTH_CM,
     MAX_MERGE_MINUTES,
+    MAX_WEIGHT_KG,
+    MIN_LENGTH_CM,
     MIN_SLEEP_SECONDS,
+    MIN_WEIGHT_KG,
     SIDE_BOTTLE,
     SIDE_LEFT,
     SIDE_RIGHT,
@@ -40,6 +44,7 @@ from .const import (
     STORAGE_VERSION,
     UNDO_SECONDS,
 )
+from .milestones import MILESTONES, MILESTONES_BY_KEY
 from .stats import Interval, WindowStats, average, night_day_stats, overlap_seconds
 
 _LOGGER = logging.getLogger(__name__)
@@ -127,13 +132,20 @@ class _Undo:
 class BabyTracker:
     """Keeps the log and current state for one baby and persists it."""
 
-    def __init__(self, hass: HomeAssistant, entry_id: str, name: str) -> None:
+    def __init__(self, hass: HomeAssistant, entry_id: str, name: str, birth_date: date | None = None) -> None:
         """Initialize the tracker."""
         self.hass = hass
         self.entry_id = entry_id
         self.name = name
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY_PREFIX}.{entry_id}")
+        self.birth_date = birth_date
         self.events: list[BabyEvent] = []
+        # Growth measurements (metric), oldest first; kept for years.
+        self.growth: list[dict[str, Any]] = []
+        # Reached milestones by key (built-in key or custom id): {"date", "note"}.
+        self.milestones_done: dict[str, dict[str, Any]] = {}
+        # Milestones the user typed: {"id", "name"}.
+        self.custom_milestones: list[dict[str, Any]] = []
         self.sleep_start: datetime | None = None
         self.last_wake: datetime | None = None
         self.merge_minutes: int = DEFAULT_MERGE_MINUTES
@@ -159,6 +171,15 @@ class BabyTracker:
                 self.sleep_start = _parse(start)
             if wake := data.get("last_wake"):
                 self.last_wake = _parse(wake)
+            self.growth = sorted(
+                ({**g, "date": date.fromisoformat(g["date"])} for g in data.get("growth", [])),
+                key=lambda g: g["date"],
+            )
+            self.milestones_done = {
+                key: {**done, "date": date.fromisoformat(done["date"])}
+                for key, done in data.get("milestones", {}).items()
+            }
+            self.custom_milestones = list(data.get("custom_milestones", []))
             settings = data.get("settings", {})
             self.merge_minutes = int(settings.get("merge_minutes", DEFAULT_MERGE_MINUTES))
             if value := settings.get("night_start"):
@@ -185,6 +206,11 @@ class BabyTracker:
     def _data_to_save(self) -> dict[str, Any]:
         return {
             "events": [e.as_dict() for e in self.events],
+            "growth": [{**g, "date": g["date"].isoformat()} for g in self.growth],
+            "milestones": {
+                key: {**done, "date": done["date"].isoformat()} for key, done in self.milestones_done.items()
+            },
+            "custom_milestones": self.custom_milestones,
             "sleep_start": self.sleep_start.isoformat() if self.sleep_start else None,
             "last_wake": self.last_wake.isoformat() if self.last_wake else None,
             "settings": {
@@ -499,6 +525,197 @@ class BabyTracker:
             self.night_end = end.replace(second=0, microsecond=0)
         self._changed()
 
+    # ------------------------------------------------------ growth/milestones
+
+    @callback
+    def async_log_growth(
+        self,
+        when: date | None = None,
+        weight_kg: float | None = None,
+        length_cm: float | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Log a weight and/or length measurement."""
+        if weight_kg is None and length_cm is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="growth_empty")
+        if weight_kg is not None and not MIN_WEIGHT_KG <= weight_kg <= MAX_WEIGHT_KG:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="weight_out_of_range",
+                translation_placeholders={"min": str(MIN_WEIGHT_KG), "max": str(MAX_WEIGHT_KG)},
+            )
+        if length_cm is not None and not MIN_LENGTH_CM <= length_cm <= MAX_LENGTH_CM:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="length_out_of_range",
+                translation_placeholders={"min": str(MIN_LENGTH_CM), "max": str(MAX_LENGTH_CM)},
+            )
+        entry: dict[str, Any] = {
+            "id": uuid.uuid4().hex,
+            "date": when or dt_util.now().date(),
+            "weight_kg": round(weight_kg, 3) if weight_kg is not None else None,
+            "length_cm": round(length_cm, 1) if length_cm is not None else None,
+            "note": note or None,
+        }
+        self.growth = sorted([*self.growth, entry], key=lambda g: g["date"])
+        self._set_undo("growth", lambda: self._remove_growth(entry["id"]))
+        self._changed(
+            "growth",
+            {
+                "date": entry["date"].isoformat(),
+                "weight_kg": entry["weight_kg"],
+                "length_cm": entry["length_cm"],
+            },
+        )
+        return entry
+
+    def _remove_growth(self, growth_id: str) -> None:
+        self.growth = [g for g in self.growth if g["id"] != growth_id]
+
+    @callback
+    def async_delete_growth(self, growth_id: str) -> None:
+        """Delete a measurement."""
+        entry = next((g for g in self.growth if g["id"] == growth_id), None)
+        if entry is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="event_not_found",
+                translation_placeholders={"event_id": growth_id},
+            )
+        self._remove_growth(growth_id)
+
+        def restore() -> None:
+            self.growth = sorted([*self.growth, entry], key=lambda g: g["date"])
+
+        self._set_undo("delete_growth", restore)
+        self._changed("delete_growth", {"date": entry["date"].isoformat()})
+
+    def latest_growth(self, field: str) -> dict[str, Any] | None:
+        """Return the newest measurement that has ``field`` (weight_kg or length_cm)."""
+        return next((g for g in reversed(self.growth) if g.get(field) is not None), None)
+
+    def milestone_name(self, key: str) -> str:
+        """Return a milestone's name (built-in or custom)."""
+        if (builtin := MILESTONES_BY_KEY.get(key)) is not None:
+            return builtin.name
+        if (custom := next((c for c in self.custom_milestones if c["id"] == key), None)) is not None:
+            return custom["name"]
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="milestone_not_found",
+            translation_placeholders={"milestone": key},
+        )
+
+    def _restore_milestone(self, key: str, before: dict[str, Any] | None) -> Callable[[], None]:
+        def restore() -> None:
+            if before is None:
+                self.milestones_done.pop(key, None)
+            else:
+                self.milestones_done[key] = before
+
+        return restore
+
+    @callback
+    def async_set_milestone(self, key: str, when: date | None = None, note: str | None = None) -> date:
+        """Mark a milestone as reached (or change its date)."""
+        name = self.milestone_name(key)
+        at = when or dt_util.now().date()
+        self._set_undo("milestone", self._restore_milestone(key, self.milestones_done.get(key)))
+        self.milestones_done[key] = {"date": at, "note": note or None}
+        self._changed("milestone", {"milestone": key, "milestone_name": name, "date": at.isoformat()})
+        return at
+
+    @callback
+    def async_clear_milestone(self, key: str) -> None:
+        """Mark a milestone as not reached."""
+        name = self.milestone_name(key)
+        if key not in self.milestones_done:
+            return
+        self._set_undo("clear_milestone", self._restore_milestone(key, self.milestones_done[key]))
+        del self.milestones_done[key]
+        self._changed("clear_milestone", {"milestone": key, "milestone_name": name})
+
+    @callback
+    def async_add_milestone(self, name: str, when: date | None = None, note: str | None = None) -> str:
+        """Add a milestone of the user's own; reached on ``when`` if given."""
+        name = name.strip()
+        if not name:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="milestone_name_empty")
+        custom_id = f"custom_{uuid.uuid4().hex[:12]}"
+        self.custom_milestones = [*self.custom_milestones, {"id": custom_id, "name": name[:100]}]
+        if when is not None:
+            self.milestones_done[custom_id] = {"date": when, "note": note or None}
+
+        def restore() -> None:
+            self.custom_milestones = [c for c in self.custom_milestones if c["id"] != custom_id]
+            self.milestones_done.pop(custom_id, None)
+
+        self._set_undo("add_milestone", restore)
+        self._changed("add_milestone", {"milestone": custom_id, "milestone_name": name})
+        return custom_id
+
+    @callback
+    def async_delete_milestone(self, key: str) -> None:
+        """Delete a milestone the user added."""
+        custom = next((c for c in self.custom_milestones if c["id"] == key), None)
+        if custom is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="milestone_not_custom",
+                translation_placeholders={"milestone": key},
+            )
+        done = self.milestones_done.pop(key, None)
+        index = self.custom_milestones.index(custom)
+        self.custom_milestones = [c for c in self.custom_milestones if c["id"] != key]
+
+        def restore() -> None:
+            self.custom_milestones = [
+                *self.custom_milestones[:index],
+                custom,
+                *self.custom_milestones[index:],
+            ]
+            if done is not None:
+                self.milestones_done[key] = done
+
+        self._set_undo("delete_milestone", restore)
+        self._changed("delete_milestone", {"milestone": key, "milestone_name": custom["name"]})
+
+    def milestones_snapshot(self) -> list[dict[str, Any]]:
+        """Return every milestone with its state, built-in ones first."""
+
+        def state(key: str) -> dict[str, Any]:
+            done = self.milestones_done.get(key)
+            return {
+                "date": done["date"].isoformat() if done else None,
+                "note": done["note"] if done else None,
+            }
+
+        builtin = [
+            {
+                "key": m.key,
+                "name": m.name,
+                "category": m.category,
+                "months": m.months,
+                "cdc": m.cdc,
+                "custom": False,
+                **state(m.key),
+            }
+            for m in MILESTONES
+        ]
+        custom = [
+            {
+                "key": c["id"],
+                "name": c["name"],
+                "category": "custom",
+                "months": None,
+                "cdc": False,
+                "custom": True,
+                **state(c["id"]),
+            }
+            for c in self.custom_milestones
+        ]
+        return builtin + custom
+
     # ----------------------------------------------------------------- values
 
     def events_between(self, start: datetime, end: datetime) -> list[BabyEvent]:
@@ -615,6 +832,9 @@ class BabyTracker:
             "entry_id": self.entry_id,
             "name": self.name,
             "revision": self._revision,
+            "birth_date": self.birth_date.isoformat() if self.birth_date else None,
+            "growth": [{**g, "date": g["date"].isoformat()} for g in self.growth],
+            "milestones": self.milestones_snapshot(),
             "now": now.isoformat(),
             "sleeping": self.sleeping,
             "sleep_start": self.sleep_start.isoformat() if self.sleep_start else None,
@@ -654,5 +874,8 @@ class BabyTracker:
             "last_event": self.events[-1].start.isoformat() if self.events else None,
             "sleeping": self.sleeping,
             "undo_available": self.undo_available,
+            "growth_measurements": len(self.growth),
+            "milestones_reached": len(self.milestones_done),
+            "custom_milestones": len(self.custom_milestones),
             "settings": self._data_to_save()["settings"],
         }
