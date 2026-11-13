@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0
+
+- Card: new `parts` option to choose which parts the card shows and in which order
+  (`header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`).
+  Cards without it look exactly as before.
+- Card: new `buttons` part with compact one-tap quick buttons (sleep, diapers, feedings,
+  undo), configurable with `buttons` (action, name, icon, colour, width) and
+  `buttons_columns`.
+- Card editor: tick and reorder the parts and the quick buttons, and set a button's name,
+  icon and colour.
+
 ## 1.0.1
 
 - Add the `health_wellbeing` category to the integration manifest (used by Home Assistant

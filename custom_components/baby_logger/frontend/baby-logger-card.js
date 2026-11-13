@@ -17,9 +17,18 @@
  *   night_days: 14            nights in the night sleep chart
  *   night_start: "21:00"      optional; defaults to the integration's "Night starts" setting
  *   night_end: "07:00"        optional; defaults to the integration's "Night ends" setting
+ *   parts: [header, tiles, buttons, undo, summary, trends, nights, timeline, log]
+ *                             optional; the parts to show, in order (replaces the show_* flags)
+ *   buttons:                  optional; quick buttons for the "buttons" part, in order
+ *     - action: sleep         sleep | diaper_wet | diaper_dirty | diaper_both |
+ *       name: Sleep           feed_left | feed_right | feed_bottle | undo
+ *       icon: mdi:sleep       (name, icon, color and columns are optional)
+ *       color: indigo         HA colour name or CSS colour
+ *       columns: 12           width in a 12-column grid
+ *   buttons_columns: 3        default buttons per row
  */
 
-const CARD_VERSION = "1.0.1";
+const CARD_VERSION = "1.1.0";
 const DOMAIN = "baby_logger";
 
 const DIAPER = {
@@ -59,6 +68,59 @@ const DEFAULTS = {
   night_end: "",
 };
 const NIGHTS_MAX = 366;
+
+// Parts of the card that can be shown, in the editor's default order.
+const PARTS = ["header", "tiles", "buttons", "undo", "summary", "trends", "nights", "timeline", "log"];
+const PART_LABELS = {
+  header: "Header (name and today's counts)",
+  tiles: "Diaper / feeding / sleep tiles",
+  buttons: "Quick buttons",
+  undo: "Undo banner",
+  summary: "Night / daytime summary",
+  trends: "Trends",
+  nights: "Night sleep",
+  timeline: "Sleep timeline",
+  log: "Log",
+};
+// Parts that need the sleep history.
+const SLEEP_PARTS = ["nights", "timeline"];
+
+const BUTTON_ACTIONS = {
+  sleep: { name: "Sleep", icon: "mdi:sleep", color: "indigo", columns: 12 },
+  diaper_wet: { name: "Wet", icon: "mdi:water", color: "blue", action: "diaper", value: "wet" },
+  diaper_dirty: { name: "Dirty", icon: "mdi:emoticon-poop", color: "brown", action: "diaper", value: "dirty" },
+  diaper_both: { name: "Both", icon: "mdi:water-plus", color: "orange", action: "diaper", value: "both" },
+  feed_left: { name: "Left", icon: "mdi:arrow-left-bold-circle", color: "pink", action: "feed", value: "left" },
+  feed_right: { name: "Right", icon: "mdi:arrow-right-bold-circle", color: "purple", action: "feed", value: "right" },
+  feed_bottle: { name: "Bottle", icon: "mdi:baby-bottle", color: "cyan", action: "feed", value: "bottle" },
+  undo: { name: "Undo", icon: "mdi:undo-variant", color: "grey", columns: 12 },
+};
+const DEFAULT_BUTTONS = Object.keys(BUTTON_ACTIONS);
+
+// Home Assistant theme colours, with the default theme's values as fallback.
+const HA_COLORS = {
+  red: "#f44336",
+  pink: "#e91e63",
+  purple: "#926bc7",
+  "deep-purple": "#6e41ab",
+  indigo: "#3f51b5",
+  blue: "#2196f3",
+  "light-blue": "#03a9f4",
+  cyan: "#00bcd4",
+  teal: "#009688",
+  green: "#4caf50",
+  "light-green": "#8bc34a",
+  lime: "#cddc39",
+  yellow: "#ffeb3b",
+  amber: "#ffc107",
+  orange: "#ff9800",
+  "deep-orange": "#ff6f22",
+  brown: "#795548",
+  grey: "#9e9e9e",
+  "blue-grey": "#607d8b",
+  black: "#000000",
+  white: "#ffffff",
+};
 const TIMELINE_MAX_DAYS = 3 * 366;
 const TIMELINE_BINS = 144; // 10 minute resolution for averaged lines
 
@@ -424,6 +486,70 @@ function nightsHtml(nights, settings) {
     <div class="legend"><span><i style="background:var(--bt-sleep)"></i>Asleep</span><span><i style="background:var(--bt-awake)"></i>Awake</span><span><i class="dash"></i>Average</span></div>`;
 }
 
+/**
+ * The parts to render, in order. Without a `parts` option this is what the card
+ * has always shown, derived from the show_* flags. The undo banner is added above
+ * the first part with buttons (or the log, whose delete can be undone) when it
+ * isn't listed, so an action can always be undone.
+ */
+export function resolveParts(cfg) {
+  let parts;
+  if (Array.isArray(cfg.parts)) {
+    parts = [...new Set(cfg.parts.map((p) => String(p).trim()).filter((p) => PARTS.includes(p)))];
+  } else {
+    parts = ["header", "undo", "tiles"];
+    for (const [part, flag] of [
+      ["summary", "show_summary"],
+      ["trends", "show_trends"],
+      ["nights", "show_nights"],
+      ["timeline", "show_timeline"],
+      ["log", "show_log"],
+    ]) {
+      if (cfg[flag] ?? DEFAULTS[flag]) parts.push(part);
+    }
+  }
+  if (!parts.includes("undo")) {
+    const at = parts.findIndex((p) => p === "buttons" || p === "tiles");
+    const index = at >= 0 ? at : parts.indexOf("log");
+    if (index >= 0) parts.splice(index, 0, "undo");
+  }
+  return parts;
+}
+
+/** Normalised quick buttons from the `buttons` / `buttons_columns` options. */
+export function buttonList(cfg) {
+  const perRow = clampInt(cfg.buttons_columns, 1, 12, 3);
+  const entries = Array.isArray(cfg.buttons) ? cfg.buttons : DEFAULT_BUTTONS;
+  const seen = new Set();
+  const buttons = [];
+  for (const entry of entries) {
+    const item = typeof entry === "string" ? { action: entry } : entry || {};
+    const action = String(item.action ?? "").trim();
+    const base = BUTTON_ACTIONS[action];
+    if (!base || seen.has(action)) continue;
+    seen.add(action);
+    buttons.push({
+      action,
+      name: item.name ? String(item.name) : null,
+      icon: item.icon ? String(item.icon) : null,
+      color: item.color ? String(item.color) : null,
+      columns: clampInt(item.columns, 1, 12, base.columns ?? Math.max(1, Math.floor(12 / perRow))),
+    });
+  }
+  return buttons;
+}
+
+/** A CSS colour for a Home Assistant colour name (e.g. "light-blue") or a CSS colour. */
+export function resolveColor(color, fallback = "var(--primary-color)") {
+  const value = String(color ?? "").trim();
+  if (!value) return fallback;
+  const name = value.toLowerCase().replace(/_/g, "-");
+  if (name in HA_COLORS) return `var(--${name}-color, ${HA_COLORS[name]})`;
+  if (name === "primary" || name === "accent") return `var(--${name}-color)`;
+  // Anything else is used as-is, as long as it can't break out of the style attribute.
+  return /^[#\w\s(),.%-]+$/.test(value) ? value : fallback;
+}
+
 function describe(e) {
   if (e.kind === "diaper") {
     const d = DIAPER[e.diaper_type] || DIAPER.wet;
@@ -493,6 +619,7 @@ class BabyTrackerCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._data = null;
     this._error = null;
+    // Where the bottle amount form is open ("tiles" or "buttons"), or false.
     this._bottleOpen = false;
     this._bottleAmount = "";
     // Bumped whenever a subscription is dropped, so stale in-flight ones are discarded.
@@ -586,16 +713,21 @@ class BabyTrackerCard extends HTMLElement {
     }
   }
 
+  _parts() {
+    return resolveParts(this._config);
+  }
+
   _needsSleeps() {
-    return Boolean(this._config.show_timeline || this._config.show_nights);
+    return this._parts().some((p) => SLEEP_PARTS.includes(p));
   }
 
   /** Load the sleeps the timeline and night chart need; again only when the data or range changes. */
   _ensureSleeps(d) {
     const now = new Date();
+    const parts = this._parts();
     const starts = [];
-    if (this._config.show_timeline) starts.push(timelineRangeStart(timelineSettings(this._config), now));
-    if (this._config.show_nights) starts.push(nightsRangeStart(nightSettings(this._config, d.settings), now));
+    if (parts.includes("timeline")) starts.push(timelineRangeStart(timelineSettings(this._config), now));
+    if (parts.includes("nights")) starts.push(nightsRangeStart(nightSettings(this._config, d.settings), now));
     if (!starts.length) return;
     const rangeStart = new Date(Math.min(...starts));
     const key = `${d.entry_id}|${d.revision}|${rangeStart.toISOString()}`;
@@ -659,11 +791,10 @@ class BabyTrackerCard extends HTMLElement {
     root.querySelectorAll("[data-since]").forEach((el) => {
       el.textContent = formatDuration(now - new Date(el.dataset.since));
     });
-    const undo = root.querySelector("[data-undo-expires]");
-    if (undo) {
-      const left = Math.round((new Date(undo.dataset.undoExpires) - now) / 1000);
-      undo.textContent = left > 0 ? `${left}s` : "";
-    }
+    root.querySelectorAll("[data-undo-expires]").forEach((el) => {
+      const left = Math.round((new Date(el.dataset.undoExpires) - now) / 1000);
+      el.textContent = left > 0 ? `${left}s` : "";
+    });
   }
 
   _handleClick(ev) {
@@ -676,7 +807,8 @@ class BabyTrackerCard extends HTMLElement {
         break;
       case "feed":
         if (value === "bottle") {
-          this._bottleOpen = !this._bottleOpen;
+          const source = target.dataset.source || "tiles";
+          this._bottleOpen = this._bottleOpen === source ? false : source;
           this._render();
           if (this._bottleOpen) this.shadowRoot.querySelector("#bottle-amount")?.focus();
         } else {
@@ -749,10 +881,80 @@ class BabyTrackerCard extends HTMLElement {
   _renderData(d) {
     const cfg = this._config;
     const now = new Date();
-    const lastDiaper = d.last_diaper;
-    const lastFeeding = d.last_feeding;
     const since = (iso) => (iso ? `<span data-since="${esc(iso)}">${formatDuration(now - new Date(iso))}</span>` : "–");
 
+    // Sleep history, shared by the night chart and the timeline.
+    let intervals = null;
+    if (this._sleeps) {
+      intervals = [...this._sleeps];
+      if (d.sleep_start) intervals.push([new Date(d.sleep_start), now]);
+    }
+    const pending = this._sleepsError
+      ? `<div class="message error">${esc(this._sleepsError)}</div>`
+      : `<div class="message">Loading…</div>`;
+
+    const parts = {
+      header: () => this._headerHtml(d),
+      undo: () => this._undoHtml(d, now),
+      tiles: () => this._tilesHtml(d, since),
+      buttons: () => this._buttonsHtml(d, now, since),
+      summary: () => this._summaryHtml(d),
+      trends: () => this._trendsHtml(d, now),
+      nights: () => {
+        const settings = nightSettings(cfg, d.settings);
+        return `
+        <div class="section">
+          <div class="section-title">Night sleep</div>
+          <div class="chart">${intervals ? nightsHtml(nightStats(intervals, settings, now), settings) : pending}</div>
+        </div>`;
+      },
+      timeline: () => {
+        const settings = timelineSettings(cfg);
+        const content = intervals ? timelineHtml(timelineRows(intervals, settings, now), settings, now) : pending;
+        const title =
+          settings.group === 1 ? "Sleep timeline" : `Sleep timeline (${settings.group}-day averages)`;
+        return `
+        <div class="section">
+          <div class="section-title">${title}</div>
+          <div class="chart">${content}</div>
+        </div>`;
+      },
+      log: () => this._logHtml(d, now),
+    };
+    return this._parts()
+      .map((part) => parts[part]())
+      .join("");
+  }
+
+  _bottleForm(source) {
+    return this._bottleOpen === source
+      ? `<div class="bottle"><input id="bottle-amount" type="number" inputmode="numeric" min="0" step="5" placeholder="Amount (ml, optional)"><button class="small primary" data-action="bottle-log">Log bottle</button><button class="small" data-action="bottle-cancel">Cancel</button></div>`
+      : "";
+  }
+
+  _headerHtml(d) {
+    return `
+      <div class="header">
+        <div class="name"><ha-icon icon="mdi:baby-face-outline"></ha-icon>${esc(d.name)}</div>
+        <div class="chips">
+          <span class="chip">${plural(d.today.diapers.total, "diaper", "diapers")}</span>
+          <span class="chip">${plural(d.today.feedings.total, "feeding", "feedings")}</span>
+          ${d.today.bottle_ml ? `<span class="chip">${Math.round(d.today.bottle_ml)} ml</span>` : ""}
+        </div>
+      </div>`;
+  }
+
+  _undoHtml(d, now) {
+    return d.undo
+      ? `<div class="undo"><ha-icon icon="mdi:check-circle"></ha-icon><span>${esc(UNDO_LABELS[d.undo.action] || "Saved")}</span>
+          <span class="countdown" data-undo-expires="${esc(d.undo.expires)}">${Math.max(0, Math.round((new Date(d.undo.expires) - now) / 1000))}s</span>
+          <button class="small" data-action="undo"><ha-icon icon="mdi:undo-variant"></ha-icon>Undo</button></div>`
+      : "";
+  }
+
+  _tilesHtml(d, since) {
+    const lastDiaper = d.last_diaper;
+    const lastFeeding = d.last_feeding;
     const diaperSub = lastDiaper
       ? `${DIAPER[lastDiaper.diaper_type]?.emoji || ""} ${esc(DIAPER[lastDiaper.diaper_type]?.label || "")} at ${clock(lastDiaper.start)}`
       : "Nothing logged yet";
@@ -767,13 +969,10 @@ class BabyTrackerCard extends HTMLElement {
     const feedButtons = Object.entries(SIDES)
       .map(([key, v]) => {
         const next = key === d.next_side ? " next" : "";
-        const active = key === "bottle" && this._bottleOpen ? " active" : "";
-        return `<button class="action${next}${active}" style="--accent:${v.color}" data-action="feed" data-value="${key}"><ha-icon icon="${v.icon}"></ha-icon>${v.label}${next ? '<span class="badge">next</span>' : ""}</button>`;
+        const active = key === "bottle" && this._bottleOpen === "tiles" ? " active" : "";
+        return `<button class="action${next}${active}" style="--accent:${v.color}" data-action="feed" data-value="${key}" data-source="tiles"><ha-icon icon="${v.icon}"></ha-icon>${v.label}${next ? '<span class="badge">next</span>' : ""}</button>`;
       })
       .join("");
-    const bottleForm = this._bottleOpen
-      ? `<div class="bottle"><input id="bottle-amount" type="number" inputmode="numeric" min="0" step="5" placeholder="Amount (ml, optional)"><button class="small primary" data-action="bottle-log">Log bottle</button><button class="small" data-action="bottle-cancel">Cancel</button></div>`
-      : "";
 
     const sleeping = d.sleeping;
     const sleepSince = sleeping ? d.sleep_start : d.last_wake;
@@ -786,22 +985,7 @@ class BabyTrackerCard extends HTMLElement {
           <span class="emoji">${sleeping ? "☀️" : "😴"}</span>${sleeping ? "Woke up" : "Fell asleep"}</button></div>
       </div>`;
 
-    const undo = d.undo
-      ? `<div class="undo"><ha-icon icon="mdi:check-circle"></ha-icon><span>${esc(UNDO_LABELS[d.undo.action] || "Saved")}</span>
-          <span class="countdown" data-undo-expires="${esc(d.undo.expires)}">${Math.max(0, Math.round((new Date(d.undo.expires) - now) / 1000))}s</span>
-          <button class="small" data-action="undo"><ha-icon icon="mdi:undo-variant"></ha-icon>Undo</button></div>`
-      : "";
-
-    let html = `
-      <div class="header">
-        <div class="name"><ha-icon icon="mdi:baby-face-outline"></ha-icon>${esc(d.name)}</div>
-        <div class="chips">
-          <span class="chip">${plural(d.today.diapers.total, "diaper", "diapers")}</span>
-          <span class="chip">${plural(d.today.feedings.total, "feeding", "feedings")}</span>
-          ${d.today.bottle_ml ? `<span class="chip">${Math.round(d.today.bottle_ml)} ml</span>` : ""}
-        </div>
-      </div>
-      ${undo}
+    return `
       <div class="tiles">
         <div class="tile">
           <div class="tile-head"><ha-icon icon="mdi:human-baby-changing-table"></ha-icon>Diaper</div>
@@ -814,15 +998,73 @@ class BabyTrackerCard extends HTMLElement {
           <div class="big">${lastFeeding ? since(lastFeeding.start) : "–"}</div>
           <div class="sub">${feedingSub}</div>
           <div class="buttons">${feedButtons}</div>
-          ${bottleForm}
+          ${this._bottleForm("tiles")}
         </div>
         ${sleepTile}
       </div>`;
+  }
 
-    if (cfg.show_summary) {
-      const n = d.last_night || {};
-      const day = d.daytime || {};
-      html += `
+  /** Compact one-tap buttons: an icon in a coloured circle and a label. */
+  _buttonsHtml(d, now, since) {
+    // A feeding logged now would be added to the previous one (side switch).
+    const lastFeeding = d.last_feeding;
+    const mergeMs = (Number(d.settings?.merge_minutes) || 0) * 60000;
+    const sameFeeding =
+      Boolean(lastFeeding) && mergeMs > 0 && now - new Date(lastFeeding.end || lastFeeding.start) < mergeMs;
+
+    const buttons = buttonList(this._config)
+      .map((b) => {
+        const base = BUTTON_ACTIONS[b.action];
+        let name = b.name || base.name;
+        let icon = b.icon || base.icon;
+        let color = b.color || base.color;
+        let sub = "";
+        let action = base.action;
+        let value = base.value;
+        let classes = "";
+        let badge = "";
+        if (b.action === "sleep") {
+          action = "sleep";
+          if (d.sleeping) {
+            name = b.name || "Sleeping 😴";
+            sub = d.sleep_start ? `Asleep for ${since(d.sleep_start)} — tap to wake` : "Tap to wake";
+            classes = " on";
+          } else {
+            name = b.name || "Awake ☀️";
+            icon = b.icon || "mdi:weather-sunny";
+            color = b.color || "amber";
+            sub = d.last_wake ? `Awake for ${since(d.last_wake)} — tap to start sleep` : "Tap to start sleep";
+          }
+        } else if (b.action === "undo") {
+          if (!d.undo) return "";
+          action = "undo";
+          name = b.name || "↩️ Undo";
+          const left = Math.max(0, Math.round((new Date(d.undo.expires) - now) / 1000));
+          sub = `${esc(UNDO_LABELS[d.undo.action] || "Saved")} · tap within <span data-undo-expires="${esc(d.undo.expires)}">${left}s</span>`;
+        } else if (action === "feed") {
+          if (value === d.next_side) {
+            classes = " next";
+            badge = '<span class="badge">next</span>';
+          }
+          if (value === "bottle" && this._bottleOpen === "buttons") classes += " active";
+          if (sameFeeding) sub = "same feeding";
+        }
+        // Wide buttons put the text next to the icon; narrow ones below it.
+        const layout = b.columns >= 6 ? " wide" : "";
+        return `<button class="qb${layout}${classes}" style="grid-column: span ${b.columns}; --accent: ${resolveColor(color)}"
+          data-action="${action}"${value ? ` data-value="${value}"` : ""} data-source="buttons">
+          <span class="qb-icon"><ha-icon icon="${esc(icon)}"></ha-icon></span>
+          <span class="qb-text"><span class="qb-name">${esc(name)}</span>${sub ? `<span class="qb-sub">${sub}</span>` : ""}</span>${badge}
+        </button>`;
+      })
+      .join("");
+    return `<div class="quick">${buttons}</div>${this._bottleForm("buttons")}`;
+  }
+
+  _summaryHtml(d) {
+    const n = d.last_night || {};
+    const day = d.daytime || {};
+    return `
         <div class="section">
           <div class="summary">
             <div><div class="label"><ha-icon icon="mdi:weather-night"></ha-icon>Last night</div>
@@ -833,11 +1075,11 @@ class BabyTrackerCard extends HTMLElement {
               <div class="sub">${plural(day.naps, "nap", "naps")} · avg ${hours(day.avg_asleep)}</div></div>
           </div>
         </div>`;
-    }
+  }
 
-    if (cfg.show_trends) {
-      const buckets = dailyTrends(d.events || [], Number(cfg.days) || 7, now, d.sleep_start);
-      html += `
+  _trendsHtml(d, now) {
+    const buckets = dailyTrends(d.events || [], Number(this._config.days) || 7, now, d.sleep_start);
+    return `
         <div class="section">
           <div class="section-title">Last ${buckets.length} days</div>
           <div class="charts">
@@ -851,61 +1093,29 @@ class BabyTrackerCard extends HTMLElement {
               ${stackedBars(buckets, ["sleep"], { sleep: SLEEP_COLORS.night }, (b) => b.sleep, { unit: " h", decimals: 1 })}</div>
           </div>
         </div>`;
-    }
+  }
 
-    let intervals = null;
-    if (this._sleeps) {
-      intervals = [...this._sleeps];
-      if (d.sleep_start) intervals.push([new Date(d.sleep_start), now]);
-    }
-    const pending = this._sleepsError
-      ? `<div class="message error">${esc(this._sleepsError)}</div>`
-      : `<div class="message">Loading…</div>`;
-
-    if (cfg.show_nights) {
-      const settings = nightSettings(cfg, d.settings);
-      html += `
-        <div class="section">
-          <div class="section-title">Night sleep</div>
-          <div class="chart">${intervals ? nightsHtml(nightStats(intervals, settings, now), settings) : pending}</div>
-        </div>`;
-    }
-
-    if (cfg.show_timeline) {
-      const settings = timelineSettings(cfg);
-      const content = intervals ? timelineHtml(timelineRows(intervals, settings, now), settings, now) : pending;
-      const title =
-        settings.group === 1 ? "Sleep timeline" : `Sleep timeline (${settings.group}-day averages)`;
-      html += `
-        <div class="section">
-          <div class="section-title">${title}</div>
-          <div class="chart">${content}</div>
-        </div>`;
-    }
-
-    if (cfg.show_log) {
-      const entries = [...(d.events || [])]
-        .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
-        .slice(0, Number(cfg.log_entries) || 10);
-      let lastDay = "";
-      const rows = entries
-        .map((e) => {
-          const when = new Date(e.kind === "sleep" ? e.end : e.start);
-          const day = dayLabel(when, now);
-          const heading = day !== lastDay ? `<li class="day">${esc(day)}</li>` : "";
-          lastDay = day;
-          const { emoji, text } = describe(e);
-          return `${heading}<li><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
+  _logHtml(d, now) {
+    const entries = [...(d.events || [])]
+      .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
+      .slice(0, Number(this._config.log_entries) || 10);
+    let lastDay = "";
+    const rows = entries
+      .map((e) => {
+        const when = new Date(e.kind === "sleep" ? e.end : e.start);
+        const day = dayLabel(when, now);
+        const heading = day !== lastDay ? `<li class="day">${esc(day)}</li>` : "";
+        lastDay = day;
+        const { emoji, text } = describe(e);
+        return `${heading}<li><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
             <button class="icon" title="Delete" aria-label="Delete" data-action="delete" data-value="${esc(e.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
-        })
-        .join("");
-      html += `
+      })
+      .join("");
+    return `
         <div class="section">
           <div class="section-title">Log</div>
           ${rows ? `<ul class="log">${rows}</ul>` : `<div class="message">Nothing logged yet.</div>`}
         </div>`;
-    }
-    return html;
   }
 }
 
@@ -914,14 +1124,17 @@ const STYLE = `
   ha-card { padding: 16px; overflow: hidden; container: bt-card / inline-size;
     --bt-sleep: ${SLEEP_COLORS.night}; --bt-awake: color-mix(in srgb, ${SLEEP_COLORS.day} 55%, var(--card-background-color)); }
   ha-icon { --mdc-icon-size: 18px; }
+  /* Parts can come in any order: symmetric margins collapse between neighbours. */
+  ha-card > :first-child { margin-top: 0; }
+  ha-card > :last-child { margin-bottom: 0; }
   .message { padding: 8px 0; color: var(--secondary-text-color); }
   .message.error { color: var(--error-color, #db4437); }
-  .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0; }
   .name { display: flex; align-items: center; gap: 8px; font-size: 1.3em; font-weight: 500; }
   .name ha-icon { --mdc-icon-size: 26px; color: var(--primary-color); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { padding: 2px 10px; border-radius: 12px; font-size: 0.85em; background: var(--secondary-background-color); color: var(--secondary-text-color); }
-  .tiles { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .tiles { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 12px 0; }
   .tile { border-radius: 12px; padding: 12px; background: var(--secondary-background-color); display: flex; flex-direction: column; gap: 4px; }
   .tile.sleeping { background: color-mix(in srgb, ${SLEEP_COLORS.night} 18%, var(--secondary-background-color)); }
   .tile-head { display: flex; align-items: center; gap: 6px; font-weight: 500; color: var(--secondary-text-color); }
@@ -942,12 +1155,26 @@ const STYLE = `
   .bottle input { flex: 1; min-width: 0; padding: 8px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
   button.small { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 8px; background: var(--card-background-color); border: 1px solid var(--divider-color); }
   button.small.primary { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: var(--primary-color); }
-  .undo { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 12px; border-radius: 10px;
+  .undo { display: flex; align-items: center; gap: 8px; margin: 12px 0; padding: 8px 12px; border-radius: 10px;
     background: color-mix(in srgb, var(--success-color, #43a047) 15%, var(--card-background-color)); }
   .undo > ha-icon { color: var(--success-color, #43a047); }
   .undo span:first-of-type { flex: 1; }
+  .quick { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+  .qb { position: relative; min-width: 0; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 8px 4px; border-radius: 12px; background: var(--secondary-background-color); border: 2px solid transparent; text-align: center; }
+  .qb.wide { flex-direction: row; justify-content: flex-start; gap: 12px; padding: 8px 12px; text-align: left; }
+  .qb:hover { background: color-mix(in srgb, var(--accent) 10%, var(--secondary-background-color)); }
+  .qb:active { transform: scale(0.97); }
+  .qb.next, .qb.active, .qb.on { border-color: var(--accent); }
+  .qb.on { background: color-mix(in srgb, var(--accent) 16%, var(--secondary-background-color)); }
+  .qb-icon { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+  .qb-icon ha-icon { --mdc-icon-size: 22px; }
+  .qb-text { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
+  .qb-name { font-weight: 500; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qb-sub { font-size: 0.75em; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .countdown { color: var(--secondary-text-color); font-variant-numeric: tabular-nums; font-size: 0.85em; }
-  .section { margin-top: 16px; }
+  .section { margin: 16px 0; }
   .section-title { font-weight: 500; margin-bottom: 8px; }
   .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .summary > div { border-radius: 12px; padding: 12px; background: var(--secondary-background-color); }
@@ -997,9 +1224,21 @@ const STYLE = `
   button.icon:hover { background: var(--secondary-background-color); color: var(--error-color, #db4437); }
 `;
 
+/** The options the editor's part and button lists are built from. */
+const listsKey = (config) =>
+  JSON.stringify([config.parts, config.buttons, ...["summary", "trends", "nights", "timeline", "log"].map((p) => config[`show_${p}`])]);
+
 class BabyTrackerCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
+    // Keep the order of hidden parts / buttons while editing, unless the config
+    // was changed somewhere else (e.g. in the YAML editor).
+    const key = listsKey(config);
+    if (key !== this._listsKey) {
+      this._listsKey = key;
+      this._parts = this._initialParts();
+      this._buttons = this._initialButtons();
+    }
     this._render();
   }
 
@@ -1017,12 +1256,84 @@ class BabyTrackerCardEditor extends HTMLElement {
     }
   }
 
+  /** Every part, shown ones first in their order, then the hidden ones. */
+  _initialParts() {
+    const { parts } = this._config;
+    // A written list as-is (an undo banner the card adds itself shows as hidden);
+    // otherwise what the card shows today from the show_* flags.
+    const shown = Array.isArray(parts)
+      ? [...new Set(parts.map((p) => String(p).trim()))].filter((p) => PARTS.includes(p))
+      : resolveParts({ ...this._config, parts: undefined });
+    return [...shown.map((part) => ({ part, on: true })), ...PARTS.filter((p) => !shown.includes(p)).map((part) => ({ part, on: false }))];
+  }
+
+  /** Every button action, shown ones first in their order, then the hidden ones. */
+  _initialButtons() {
+    const raw = Array.isArray(this._config.buttons) ? this._config.buttons : DEFAULT_BUTTONS;
+    const byAction = new Map();
+    for (const entry of raw) {
+      const item = typeof entry === "string" ? { action: entry } : { ...(entry || {}) };
+      if (BUTTON_ACTIONS[item.action] && !byAction.has(item.action)) byAction.set(item.action, item);
+    }
+    const shown = [...byAction.values()].map((item) => ({ ...item, on: true }));
+    const hidden = DEFAULT_BUTTONS.filter((a) => !byAction.has(a)).map((action) => ({ action, on: false }));
+    return [...shown, ...hidden];
+  }
+
   _changed(key, value) {
-    const config = { ...this._config };
+    // Configs written by the editor always have an explicit part list.
+    const config = { ...this._config, parts: this._parts.filter((p) => p.on).map((p) => p.part) };
     if (value === "" || value === undefined || value === DEFAULTS[key]) delete config[key];
     else config[key] = value;
+    this._fire(config);
+  }
+
+  _fire(config) {
     this._config = config;
+    this._listsKey = listsKey(config);
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
+  }
+
+  /** Write the part list (and the button list when it was edited) to the config. */
+  _writeLists(includeButtons) {
+    const config = { ...this._config, parts: this._parts.filter((p) => p.on).map((p) => p.part) };
+    if (includeButtons) {
+      config.buttons = this._buttons
+        .filter((b) => b.on)
+        .map(({ on, ...item }) => {
+          const out = { action: item.action };
+          for (const field of ["name", "icon", "color", "columns"]) {
+            if (item[field] !== undefined && item[field] !== "") out[field] = item[field];
+          }
+          return out;
+        });
+    }
+    this._fire(config);
+    this._render();
+  }
+
+  _listRows(list, kind) {
+    return list
+      .map((item, index) => {
+        const label = kind === "parts" ? PART_LABELS[item.part] : BUTTON_ACTIONS[item.action].name + ` (${item.action})`;
+        const fields =
+          kind === "buttons"
+            ? `<div class="fields">
+                <input type="text" placeholder="Name" data-list="buttons" data-index="${index}" data-field="name" value="${esc(item.name ?? "")}">
+                <input type="text" placeholder="${esc(BUTTON_ACTIONS[item.action].icon)}" data-list="buttons" data-index="${index}" data-field="icon" value="${esc(item.icon ?? "")}">
+                <input type="text" placeholder="${esc(BUTTON_ACTIONS[item.action].color)}" data-list="buttons" data-index="${index}" data-field="color" value="${esc(item.color ?? "")}">
+              </div>`
+            : "";
+        return `<div class="row${item.on ? "" : " off"}">
+            <label><input type="checkbox" data-list="${kind}" data-index="${index}" data-op="toggle" ${item.on ? "checked" : ""}> ${esc(label)}</label>
+            <span class="arrows">
+              <button type="button" title="Move up" data-list="${kind}" data-index="${index}" data-op="up" ${index === 0 ? "disabled" : ""}>▲</button>
+              <button type="button" title="Move down" data-list="${kind}" data-index="${index}" data-op="down" ${index === list.length - 1 ? "disabled" : ""}>▼</button>
+            </span>
+            ${fields}
+          </div>`;
+      })
+      .join("");
   }
 
   _render() {
@@ -1032,20 +1343,30 @@ class BabyTrackerCardEditor extends HTMLElement {
     const options = [`<option value="">First baby</option>`]
       .concat(babies.map((b) => `<option value="${esc(b.entry_id)}" ${b.entry_id === c.entry_id ? "selected" : ""}>${esc(b.name)}</option>`))
       .join("");
-    const check = (key, label) =>
-      `<label><input type="checkbox" data-key="${key}" ${c[key] ? "checked" : ""}> ${label}</label>`;
     this.innerHTML = `
       <style>
         .bt-editor { display: grid; gap: 12px; padding: 8px 0; }
         .bt-editor label { display: flex; align-items: center; gap: 8px; }
-        .bt-editor select, .bt-editor input[type=number], .bt-editor input[type=time] { padding: 6px; font: inherit; }
+        .bt-editor select, .bt-editor input[type=number], .bt-editor input[type=time], .bt-editor input[type=text] { padding: 6px; font: inherit; }
         .bt-editor small { color: var(--secondary-text-color); margin-top: -8px; }
+        .bt-editor h3 { margin: 8px 0 0; font-size: 1em; font-weight: 500; }
+        .bt-editor .list { display: grid; gap: 4px; }
+        .bt-editor .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; padding: 4px 8px; border-radius: 8px; background: var(--secondary-background-color); }
+        .bt-editor .row.off { opacity: 0.6; }
+        .bt-editor .arrows button { font: inherit; padding: 2px 8px; cursor: pointer; }
+        .bt-editor .fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+        .bt-editor .fields input { min-width: 0; }
       </style>
       <div class="bt-editor">
         <label>Baby <select data-key="entry_id">${options}</select></label>
-        ${check("show_summary", "Show night / daytime summary")}
-        ${check("show_trends", "Show trends")}
-        ${check("show_timeline", "Show sleep timeline")}
+        <h3>Parts</h3>
+        <div class="list">${this._listRows(this._parts, "parts")}</div>
+        <small>Hidden undo banner: it still appears above the first buttons / tiles part when an action can be undone.</small>
+        <h3>Quick buttons</h3>
+        <div class="list">${this._listRows(this._buttons, "buttons")}</div>
+        <small>Name, icon and colour are optional. Colours can be Home Assistant names (e.g. light-blue) or CSS colours.</small>
+        <label>Buttons per row <input type="number" min="1" max="12" data-key="buttons_columns" value="${esc(c.buttons_columns ?? 3)}"></label>
+        <h3>Options</h3>
         <label>Timeline days <input type="number" min="1" max="${TIMELINE_MAX_DAYS}" data-key="timeline_days" value="${esc(c.timeline_days)}"></label>
         <label>Days per timeline line <select data-key="timeline_group" data-number>
           ${[1, 3, 7, 14, 30]
@@ -1056,11 +1377,9 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>Timeline lines start at <select data-key="timeline_start_hour" data-number>
           ${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${Number(c.timeline_start_hour) === h ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}
         </select></label>
-        ${check("show_nights", "Show night sleep")}
         <label>Nights shown <input type="number" min="1" max="${NIGHTS_MAX}" data-key="night_days" value="${esc(c.night_days)}"></label>
         <label>Night from <input type="time" data-key="night_start" value="${esc(c.night_start)}"> to <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
         <small>Leave the night times empty to use the integration's Night starts / Night ends settings.</small>
-        ${check("show_log", "Show log")}
         <label>Log entries <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
         <label>Days of history <input type="number" min="1" max="31" data-key="days" value="${esc(c.days)}"></label>
       </div>`;
@@ -1069,7 +1388,29 @@ class BabyTrackerCardEditor extends HTMLElement {
         const key = ev.target.dataset.key;
         let value = ev.target.type === "checkbox" ? ev.target.checked : ev.target.value;
         if (ev.target.type === "number" || "number" in ev.target.dataset) value = value === "" ? "" : Number(value);
+        if (key === "buttons_columns" && value === 3) value = "";
         this._changed(key, value);
+      });
+    });
+    this.querySelectorAll("[data-list][data-op]").forEach((el) => {
+      el.addEventListener(el.type === "checkbox" ? "change" : "click", (ev) => {
+        const { list, op } = ev.currentTarget.dataset;
+        const index = Number(ev.currentTarget.dataset.index);
+        const items = this[`_${list}`];
+        if (op === "toggle") items[index] = { ...items[index], on: ev.currentTarget.checked };
+        else {
+          const to = op === "up" ? index - 1 : index + 1;
+          if (to < 0 || to >= items.length) return;
+          [items[index], items[to]] = [items[to], items[index]];
+        }
+        this._writeLists(list === "buttons");
+      });
+    });
+    this.querySelectorAll("[data-list][data-field]").forEach((el) => {
+      el.addEventListener("change", (ev) => {
+        const index = Number(ev.target.dataset.index);
+        this._buttons[index] = { ...this._buttons[index], [ev.target.dataset.field]: ev.target.value.trim() };
+        this._writeLists(true);
       });
     });
   }

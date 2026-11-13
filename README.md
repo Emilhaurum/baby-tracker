@@ -36,7 +36,8 @@ Everything is stored locally in Home Assistant.
   the average and wake-ups per night. The night window is the integration's *Night
   starts* / *Night ends* setting, or one you set on the card.
 - **Dashboard card** with quick actions, a summary, 7-day trends, night sleep, the
-  sleep timeline and an editable log.
+  sleep timeline and an editable log. Choose which parts it shows and in which order, and
+  add compact one-tap quick buttons for the phone.
   It is served by the integration, so there is nothing else to install.
 - **Several babies**: add the integration once per baby.
 - Logbook entries and a `baby_logger_event` event for every action, for use in automations.
@@ -79,6 +80,9 @@ type: custom:baby-logger-card
 | Option | Default | Description |
 | --- | --- | --- |
 | `entry_id` | first baby | Which baby to show. The visual editor lets you pick by name. |
+| `parts` | see below | The parts to show, in order: `header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`. When set, the `show_*` options are ignored. |
+| `buttons` | all, see below | The quick buttons of the `buttons` part, in order. |
+| `buttons_columns` | `3` | Quick buttons per row. |
 | `show_summary` | `true` | Show last night and daytime sleep. |
 | `show_trends` | `true` | Show the diaper, feeding and sleep charts. |
 | `show_nights` | `true` | Show the night sleep chart. |
@@ -93,6 +97,77 @@ type: custom:baby-logger-card
 | `days` | `7` | Days shown in the charts (1–31). |
 
 Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to delete it.
+
+### Layout
+
+`parts` chooses which parts the card shows and in which order:
+
+| Part | Shows |
+| --- | --- |
+| `header` | The baby's name and today's diaper / feeding counts. |
+| `tiles` | The Diaper, Feeding and Sleep tiles with their buttons and the time since each. |
+| `buttons` | Compact quick buttons (see below). |
+| `undo` | The undo banner, while the latest action can be undone. |
+| `summary` | Last night and daytime sleep. |
+| `trends` | The 7-day diaper, feeding and sleep charts. |
+| `nights` | The night sleep chart. |
+| `timeline` | The sleep timeline. |
+| `log` | The latest entries. |
+
+Without `parts` the card shows `header`, `undo` and `tiles`, followed by the parts turned
+on with the `show_*` options, so existing cards look the same. If `undo` isn't listed, the
+banner appears above the first `buttons` or `tiles` part, so an action can always be undone.
+In the visual editor, tick the parts to show and use the arrows to order them.
+
+### Quick buttons
+
+The `buttons` part is a grid of one-tap buttons, each an icon in a coloured circle with a
+label. By default it has a full-width sleep button ("Awake ☀️ – Awake for 2h 10m — tap to
+start sleep"), Wet, Dirty and Both, Left, Right and Bottle, and an Undo button that only
+appears while the latest action can be undone. The suggested breast is marked *next*, and
+within the same-feeding window the feeding buttons say *same feeding*. Bottle opens the
+optional amount field.
+
+Each entry in `buttons` takes an `action` and, optionally, a `name`, an `icon`, a `color`
+(a Home Assistant colour name such as `light-blue`, or any CSS colour) and `columns` (width in
+a 12-column grid: 4 by default, so three per row, and 12 for sleep and undo):
+
+| `action` | Default |
+| --- | --- |
+| `sleep` | Sleeping 😴 / Awake ☀️, full width |
+| `diaper_wet` / `diaper_dirty` / `diaper_both` | Wet (blue), Dirty (brown), Both (orange) |
+| `feed_left` / `feed_right` / `feed_bottle` | Left (pink), Right (purple), Bottle (cyan) |
+| `undo` | ↩️ Undo, full width, only while an action can be undone |
+
+```yaml
+buttons:
+  - action: sleep
+  - action: diaper_wet
+    name: Pee
+    color: light-blue
+  - diaper_dirty
+  - action: feed_left
+  - action: feed_right
+  - action: undo
+```
+
+A compact card for the phone, with just the quick buttons and the sleep summary:
+
+```yaml
+type: custom:baby-logger-card
+parts: [buttons, summary]
+```
+
+![Quick buttons](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/quick-buttons.png)
+
+A full card with the timeline first:
+
+```yaml
+type: custom:baby-logger-card
+parts: [header, timeline, buttons, nights, trends, log]
+```
+
+### More examples
 
 A card with the last 30 nights, counting the night as 20:00–06:00:
 
