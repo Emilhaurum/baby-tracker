@@ -233,12 +233,13 @@ and releases, on the minimum supported and the latest Home Assistant release.
 
 ### Releasing
 
-1. `python scripts/set_version.py 1.2.3` and commit to `main`.
-2. Tag and push: `git tag v1.2.3 && git push origin v1.2.3`.
+1. `python scripts/set_version.py 1.2.3` and merge that to `main`.
+2. On GitHub, open **Actions → Release → Run workflow**, keep `main`, enter `1.2.3` and
+   run it. (Pushing a tag works too: `git tag v1.2.3 && git push origin v1.2.3`.)
 
-The release workflow checks that the tag matches the version in the manifest, card and
+The release workflow checks that the version matches the manifest, card and
 `pyproject.toml`, runs hassfest, HACS validation, linting, the tests and the end-to-end
-tests, then publishes a GitHub release with `baby_logger.zip` for HACS.
+tests, then creates the `v1.2.3` tag and a GitHub release with `baby_logger.zip` for HACS.
 
 ## License
 
