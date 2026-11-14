@@ -519,7 +519,7 @@
         },
         "note": {
           "name": "Note",
-          "description": "Optional note."
+          "description": "Optional note. Leave it out to keep the current note."
         }
       }
     },

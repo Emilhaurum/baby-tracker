@@ -28,6 +28,7 @@
  *   buttons_columns: 3        default buttons per row
  *   units: metric             metric (kg, cm) or imperial (lb + oz, in) for growth
  *   growth_entries: 5         measurements listed under the growth charts
+ *   growth_list: collapsed    the measurement list starts collapsed or expanded
  */
 
 const CARD_VERSION = "1.1.0";
@@ -66,6 +67,8 @@ const MILESTONE_CATEGORIES = {
   firsts: "Firsts",
   custom: "Your milestones",
 };
+// Milestones not reached yet that the timeline shows before "Show more".
+const UPCOMING_SHOWN = 4;
 const KG_PER_LB = 0.45359237;
 const CM_PER_INCH = 2.54;
 
@@ -85,6 +88,7 @@ const DEFAULTS = {
   night_end: "",
   units: "metric",
   growth_entries: 5,
+  growth_list: "collapsed",
 };
 const NIGHTS_MAX = 366;
 
@@ -685,6 +689,96 @@ export function formatAge(birthIso, dateIso) {
 const monthsLabel = (m) => (m < 24 || m % 12 ? plural(m, "month", "months") : plural(m / 12, "year", "years"));
 
 /**
+ * Milestones in timeline order: reached ones by the date reached (oldest first),
+ * then the ones not reached yet by typical age; those without one go last.
+ */
+export function milestoneTimeline(milestones) {
+  const list = milestones || [];
+  const reached = list.filter((m) => m.date).sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+  const upcoming = list
+    .filter((m) => !m.date)
+    .map((m, index) => ({ m, index }))
+    .sort((a, b) => (a.m.months ?? Infinity) - (b.m.months ?? Infinity) || a.index - b.index)
+    .map(({ m }) => m);
+  return { reached, upcoming };
+}
+
+const STOP_WORDS = new Set(["a", "an", "the", "to", "of", "on", "in", "at", "with", "and", "from", "for", "by", "his", "her", "their", "own", "baby", "said", "says", "say"]);
+
+/** Lower case, without accents or punctuation. */
+export function normalizeText(text) {
+  return String(text ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+const stem = (word) => (word.length > 4 ? word.replace(/(ing|ed|es|s)$/, "") : word);
+
+/** Edit distance where swapping two neighbouring letters counts as one edit. */
+export function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/**
+ * Milestones matching what was typed, best first. Matches the name and the tags,
+ * ignoring case, accents and word endings, and allowing small typos.
+ */
+export function matchMilestones(query, milestones, limit = 6) {
+  const phrase = normalizeText(query);
+  const tokens = phrase
+    .split(" ")
+    .filter((t) => t && !STOP_WORDS.has(t))
+    .map(stem);
+  if (!tokens.length) return [];
+  const scored = [];
+  for (const m of milestones || []) {
+    const texts = [m.name, ...(m.tags || [])].map(normalizeText);
+    const words = [...new Set(texts.join(" ").split(" ").filter(Boolean).map(stem))];
+    let score = 0;
+    let matched = 0;
+    let fuzzy = false;
+    for (const t of tokens) {
+      let best = 0;
+      for (const w of words) {
+        if (w === t) best = 3;
+        else if (best < 2 && t.length >= 2 && w.startsWith(t)) best = 2;
+        else if (best < 1 && t.length >= 4 && editDistance(t, w) <= (t.length >= 7 ? 2 : 1)) best = 1;
+        if (best === 3) break;
+      }
+      score += best;
+      if (best) matched++;
+      if (best === 1) fuzzy = true;
+    }
+    if (phrase.length >= 3 && texts.some((text) => text.includes(phrase))) score += 4;
+    // Every word must match; with three or more words one may be left over.
+    if (score && matched >= tokens.length - (tokens.length >= 3 ? 1 : 0)) scored.push({ m, score, fuzzy });
+  }
+  // Typo matches only count when nothing matches as typed ("walking" isn't "talking").
+  if (scored.some((x) => !x.fuzzy)) scored.splice(0, scored.length, ...scored.filter((x) => !x.fuzzy));
+  scored.sort((a, b) => b.score - a.score || Number(Boolean(a.m.date)) - Number(Boolean(b.m.date)) || a.m.name.localeCompare(b.m.name));
+  return scored.slice(0, limit).map(({ m }) => m);
+}
+
+// The latest snapshot (and sleeps) per subscription, so a card that Home Assistant
+// builds again renders at full height straight away instead of "Loading…", which
+// would make the page shorter for a moment and scroll it back to the top.
+const SNAPSHOTS = new Map();
+const SLEEPS = new Map();
+let defaultEntryId = null;
+
+/**
  * Points of a growth chart, oldest first. x is the age in months when the birth
  * date is known, otherwise days since 1970; y is in the display units.
  */
@@ -837,8 +931,12 @@ class BabyTrackerCard extends HTMLElement {
     // Open forms and what has been typed in them, kept across re-renders.
     this._growthOpen = false;
     this._growthForm = {};
-    this._milestoneEdit = null;
     this._milestoneForm = {};
+    this._growthListOpen = null; // null: follow the growth_list option
+    this._msOpen = new Set(); // expanded milestones
+    this._msAllOpen = false;
+    this._msShowAll = false; // all upcoming milestones, not just the next few
+    this._addForm = null; // the add-milestone window, when open
     // Bumped whenever a subscription is dropped, so stale in-flight ones are discarded.
     this._generation = 0;
     this._retryAt = 0;
@@ -898,21 +996,25 @@ class BabyTrackerCard extends HTMLElement {
     if (!this._hass || !this._config || this._subscribing || this._unsub || !this.isConnected) return;
     const generation = ++this._generation;
     this._subscribing = true;
+    if (!this._data && this._fromCache(this._config.entry_id || defaultEntryId)) this._render();
     try {
       let entryId = this._config.entry_id;
       if (!entryId) {
         const babies = await this._hass.callWS({ type: `${DOMAIN}/babies` });
         if (!babies.length) throw new Error("No baby has been added yet. Add the Baby Tracker integration first.");
         entryId = babies[0].entry_id;
+        defaultEntryId = entryId;
       }
       if (generation !== this._generation) return;
+      const cacheKey = this._cacheKey(entryId);
       const unsub = await this._hass.connection.subscribeMessage(
         (data) => {
           if (generation !== this._generation) return;
+          SNAPSHOTS.set(cacheKey, data);
           this._data = data;
           this._error = null;
           if (this._needsSleeps()) this._ensureSleeps(data);
-          this._render();
+          this._backgroundRender();
         },
         { type: `${DOMAIN}/subscribe`, entry_id: entryId, days: Number(this._config.days) || 7, ...this._dataNeeds() }
       );
@@ -928,7 +1030,7 @@ class BabyTrackerCard extends HTMLElement {
       if (generation !== this._generation) return;
       this._error = err && err.message ? err.message : String(err);
       this._retryAt = Date.now() + 30000;
-      this._render();
+      this._backgroundRender();
     } finally {
       if (generation === this._generation) this._subscribing = false;
     }
@@ -936,6 +1038,26 @@ class BabyTrackerCard extends HTMLElement {
 
   _parts() {
     return resolveParts(this._config);
+  }
+
+  _cacheKey(entryId) {
+    const needs = this._dataNeeds();
+    return `${entryId}|${Number(this._config.days) || 7}|${needs.growth}|${needs.milestones}`;
+  }
+
+  /** Show the last snapshot for this baby (from another card instance) while subscribing. */
+  _fromCache(entryId) {
+    const data = entryId ? SNAPSHOTS.get(this._cacheKey(entryId)) : null;
+    if (!data) return false;
+    this._data = data;
+    // The buttons work straight away, before the subscription is ready.
+    this._entryId = data.entry_id;
+    const sleeps = SLEEPS.get(entryId);
+    if (sleeps && !this._sleeps) {
+      this._sleeps = sleeps.sleeps;
+      this._sleepsKey = sleeps.key;
+    }
+    return true;
   }
 
   /** The optional data the subscription sends, only for the parts shown. */
@@ -968,12 +1090,13 @@ class BabyTrackerCard extends HTMLElement {
         this._sleeps = result.sleeps.map(([s, e]) => [new Date(s), new Date(e)]);
         this._sleepsKey = key;
         this._sleepsLoading = null;
-        this._render();
+        SLEEPS.set(d.entry_id, { sleeps: this._sleeps, key });
+        this._backgroundRender();
       })
       .catch((err) => {
         if (this._sleepsLoading === key) this._sleepsLoading = null;
         this._sleepsError = err && err.message ? err.message : String(err);
-        this._render();
+        this._backgroundRender();
       });
   }
 
@@ -998,7 +1121,8 @@ class BabyTrackerCard extends HTMLElement {
 
   async _call(service, data = {}) {
     try {
-      await this._hass.callService(DOMAIN, service, { config_entry_id: this._entryId, ...data });
+      const entryId = this._entryId || this._data?.entry_id;
+      await this._hass.callService(DOMAIN, service, { config_entry_id: entryId, ...data });
       return true;
     } catch (err) {
       this.dispatchEvent(
@@ -1080,25 +1204,51 @@ class BabyTrackerCard extends HTMLElement {
         if (window.confirm(`Delete the measurement${text ? ` (${text})` : ""}?`)) this._call("delete_growth", { event_id: value });
         break;
       }
+      case "growth-list":
+        this._growthListOpen = !this._growthListIsOpen();
+        this._render();
+        break;
       case "milestone": {
-        const m = (this._data?.milestones || []).find((x) => x.key === value);
-        this._milestoneEdit = this._milestoneEdit === value ? null : value;
-        this._milestoneForm = { ...this._milestoneForm, date: m?.date || todayIso() };
+        // Expand or collapse one milestone in the timeline.
+        const open = this._msAllOpen || this._msOpen.has(value);
+        if (this._msAllOpen) {
+          this._msAllOpen = false;
+          this._msOpen = new Set(this._shownMilestones().map((m) => m.key));
+        }
+        if (open) {
+          this._msOpen.delete(value);
+          delete this._milestoneForm[`date-${value}`];
+        } else {
+          this._msOpen.add(value);
+        }
         this._render();
         break;
       }
-      case "milestone-save":
-        this._call("set_milestone", { milestone: value, date: this._milestoneForm.date || todayIso() }).then((ok) => {
+      case "milestones-all":
+        this._msAllOpen = !this._msAllOpen;
+        this._msOpen = new Set();
+        this._milestoneForm = {};
+        this._render();
+        break;
+      case "milestones-more":
+        this._msShowAll = !this._msShowAll;
+        this._render();
+        break;
+      case "milestone-save": {
+        const m = (this._data?.milestones || []).find((x) => x.key === value);
+        const date = this._milestoneForm[`date-${value}`] ?? m?.date ?? todayIso();
+        this._call("set_milestone", { milestone: value, date: date || todayIso() }).then((ok) => {
           if (ok) {
-            this._milestoneEdit = null;
+            delete this._milestoneForm[`date-${value}`];
             this._render();
           }
         });
         break;
+      }
       case "milestone-clear":
         this._call("clear_milestone", { milestone: value }).then((ok) => {
           if (ok) {
-            this._milestoneEdit = null;
+            delete this._milestoneForm[`date-${value}`];
             this._render();
           }
         });
@@ -1106,31 +1256,14 @@ class BabyTrackerCard extends HTMLElement {
       case "milestone-delete": {
         const m = (this._data?.milestones || []).find((x) => x.key === value);
         if (window.confirm(`Delete "${m ? m.name : "this milestone"}"?`)) {
-          this._milestoneEdit = null;
+          this._msOpen.delete(value);
           this._call("delete_milestone", { milestone: value });
         }
         break;
       }
-      case "milestone-cancel":
-        this._milestoneEdit = null;
-        this._render();
+      case "milestone-add-open":
+        this._openAddDialog();
         break;
-      case "milestone-add": {
-        const name = (this._milestoneForm.name || "").trim();
-        if (!name) {
-          this.shadowRoot.querySelector("#milestone-name")?.focus();
-          break;
-        }
-        // An untouched date means today; a cleared one adds it as not reached yet.
-        const date = this._milestoneForm.newDate ?? todayIso();
-        this._call("add_milestone", date ? { name, date } : { name }).then((ok) => {
-          if (ok) {
-            this._milestoneForm = { ...this._milestoneForm, name: "", newDate: undefined };
-            this._render();
-          }
-        });
-        break;
-      }
       case "delete": {
         const event = (this._data?.events || []).find((e) => e.id === value);
         const text = event ? describe(event).text : "this entry";
@@ -1142,8 +1275,97 @@ class BabyTrackerCard extends HTMLElement {
     }
   }
 
+  /** The parts of the shadow DOM that are created once: style, card and add-milestone window. */
+  _ensureShell() {
+    if (this._card) return this._card;
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card></ha-card><dialog class="ms-dialog"></dialog>`;
+    const card = this.shadowRoot.querySelector("ha-card");
+    card.addEventListener("click", (ev) => this._handleClick(ev));
+    // Remember what is typed in the forms ([data-form] / [data-field] inputs).
+    card.addEventListener("input", (ev) => {
+      const { form, field } = ev.target.dataset;
+      if (form === "growth") this._growthForm[field] = ev.target.value;
+      if (form === "milestone") this._milestoneForm[field] = ev.target.value;
+      if (ev.target.id === "bottle-amount") this._bottleAmount = ev.target.value;
+    });
+    card.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" || ev.target.tagName !== "INPUT") return;
+      const form = ev.target.closest("[data-submit]");
+      if (!form) return;
+      const { submit, value } = form.dataset;
+      const selector = `[data-action="${submit}"]${value ? `[data-value="${CSS.escape(value)}"]` : ""}`;
+      form.querySelector(selector)?.click();
+    });
+    // An update that arrived while a field had focus is shown once it loses focus.
+    card.addEventListener("focusout", () => {
+      setTimeout(() => {
+        if (this._pendingRender && !this._fieldFocused()) this._render();
+      }, 0);
+    });
+    const dialog = this.shadowRoot.querySelector("dialog");
+    dialog.addEventListener("click", (ev) => this._handleDialogClick(ev));
+    dialog.addEventListener("input", (ev) => this._handleDialogInput(ev));
+    dialog.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && ev.target.tagName === "INPUT") {
+        ev.preventDefault();
+        this._addAsNew();
+      }
+    });
+    dialog.addEventListener("close", () => {
+      this._addForm = null;
+    });
+    this._card = card;
+    return card;
+  }
+
+  /** Whether a form field in the card has focus (someone is typing or picking a date). */
+  _fieldFocused() {
+    const active = this.shadowRoot?.activeElement;
+    return Boolean(active && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName) && this._card?.contains(active));
+  }
+
+  /**
+   * Re-render for an update nobody asked for (new data, sleeps loaded). Rebuilding
+   * the part with a focused field would close its date picker and could scroll the
+   * page, so every other part is updated and that one waits until the field loses focus.
+   */
+  _backgroundRender() {
+    const active = this._fieldFocused() ? this.shadowRoot.activeElement : null;
+    if (!active) {
+      this._render();
+      return;
+    }
+    const keep = active.closest("[data-part]")?.dataset.part;
+    if (!keep || !this._data || this._error) {
+      this._pendingRender = true;
+      return;
+    }
+    const card = this._card;
+    const parts = this._renderData(this._data);
+    parts.forEach(([name, html], index) => {
+      if (name === keep) return;
+      const old = [...card.children].filter((el) => el.dataset.part === name);
+      const nodes = this._partNodes(name, html);
+      if (old.length) {
+        old[0].before(nodes);
+        old.forEach((el) => el.remove());
+        return;
+      }
+      // The part had nothing to show before: insert it before the next part shown.
+      const later = new Set(parts.slice(index + 1).map(([n]) => n));
+      const anchor = [...card.children].find((el) => later.has(el.dataset.part));
+      if (anchor) anchor.before(nodes);
+      else card.append(nodes);
+    });
+    const amount = this.shadowRoot.querySelector("#bottle-amount");
+    if (amount && amount !== active) amount.value = this._bottleAmount;
+    this._pendingRender = true;
+  }
+
   _render() {
     if (!this.shadowRoot || !this._config) return;
+    this._pendingRender = false;
+    const card = this._ensureShell();
     // Keep focus and caret in a form field across re-renders.
     const active = this.shadowRoot.activeElement;
     const focusId = active && active.id ? active.id : null;
@@ -1153,41 +1375,19 @@ class BabyTrackerCard extends HTMLElement {
     } catch (_err) {
       // not every input type has a selection
     }
-    let body;
     if (this._error) {
-      body = `<div class="message error">${esc(this._error)}</div>`;
+      card.innerHTML = `<div class="message error">${esc(this._error)}</div>`;
     } else if (!this._data) {
-      body = `<div class="message">Loading…</div>`;
+      card.innerHTML = `<div class="message">Loading…</div>`;
     } else {
-      body = this._renderData(this._data);
+      card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
     }
-    this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card>${body}</ha-card>`;
-    const card = this.shadowRoot.querySelector("ha-card");
-    card.addEventListener("click", (ev) => this._handleClick(ev));
-    // Remember what is typed in the forms ([data-form] / [data-field] inputs).
-    card.addEventListener("input", (ev) => {
-      const { form, field } = ev.target.dataset;
-      if (form === "growth") this._growthForm[field] = ev.target.value;
-      if (form === "milestone") this._milestoneForm[field] = ev.target.value;
-    });
-    card.addEventListener("keydown", (ev) => {
-      if (ev.key !== "Enter" || ev.target.tagName !== "INPUT") return;
-      const submit = ev.target.closest("[data-submit]")?.dataset.submit;
-      if (submit) this.shadowRoot.querySelector(`[data-action="${submit}"]`)?.click();
-    });
     const amount = this.shadowRoot.querySelector("#bottle-amount");
-    if (amount) {
-      amount.value = this._bottleAmount;
-      amount.addEventListener("input", (ev) => {
-        this._bottleAmount = ev.target.value;
-      });
-      amount.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") this.shadowRoot.querySelector('[data-action="bottle-log"]').click();
-      });
-    }
+    if (amount) amount.value = this._bottleAmount;
     const focused = focusId ? this.shadowRoot.getElementById(focusId) : null;
-    if (focused) {
-      focused.focus();
+    if (focused && card.contains(focused)) {
+      // preventScroll: restoring focus must not scroll the page to the field.
+      focused.focus({ preventScroll: true });
       try {
         if (caret) focused.setSelectionRange(caret[0], caret[1]);
       } catch (_err) {
@@ -1262,14 +1462,20 @@ class BabyTrackerCard extends HTMLElement {
       growth: () => this._growthHtml(d),
       milestones: () => this._milestonesHtml(d),
     };
-    return this._parts()
-      .map((part) => parts[part]())
-      .join("");
+    return this._parts().map((part) => [part, parts[part]()]);
+  }
+
+  /** The nodes of one part, each marked with data-part so it can be replaced on its own. */
+  _partNodes(name, html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    for (const el of template.content.children) el.dataset.part = name;
+    return template.content;
   }
 
   _bottleForm(source) {
     return this._bottleOpen === source
-      ? `<div class="bottle"><input id="bottle-amount" type="number" inputmode="numeric" min="0" step="5" placeholder="Amount (ml, optional)"><button class="small primary" data-action="bottle-log">Log bottle</button><button class="small" data-action="bottle-cancel">Cancel</button></div>`
+      ? `<div class="bottle" data-submit="bottle-log"><input id="bottle-amount" type="number" inputmode="numeric" min="0" step="5" placeholder="Amount (ml, optional)"><button class="small primary" data-action="bottle-log">Log bottle</button><button class="small" data-action="bottle-cancel">Cancel</button></div>`
       : "";
   }
 
@@ -1442,9 +1648,11 @@ class BabyTrackerCard extends HTMLElement {
         </div>`
       : `<div class="form-toggle"><button class="small" data-action="growth-open"><ha-icon icon="mdi:plus"></ha-icon>Add measurement</button></div>`;
 
+    const shown = clampInt(this._config.growth_entries, 0, 100, 5);
+    const listOpen = this._growthListIsOpen();
     const rows = [...growth]
       .reverse()
-      .slice(0, clampInt(this._config.growth_entries, 0, 100, 5))
+      .slice(0, listOpen ? shown : 0)
       .map((g) => {
         const values = [formatWeight(g.weight_kg, units), formatLength(g.length_cm, units)].filter(Boolean).join(" · ");
         return `<li><span class="emoji">📏</span><span class="text">${esc(values)}</span><span class="time">${esc(when(g))}</span>
@@ -1465,53 +1673,226 @@ class BabyTrackerCard extends HTMLElement {
           </div>
           <div class="charts">${charts}</div>
           ${form}
-          ${rows ? `<ul class="log">${rows}</ul>` : ""}
+          ${
+            growth.length && shown
+              ? `<button class="collapse" data-action="growth-list" aria-expanded="${listOpen}">
+                  <ha-icon icon="mdi:chevron-${listOpen ? "up" : "down"}"></ha-icon>Measurements<span class="count">${growth.length}</span></button>`
+              : ""
+          }
+          ${rows ? `<ul class="log growth-list">${rows}</ul>` : ""}
         </div>`;
   }
 
+  _growthListIsOpen() {
+    return this._growthListOpen ?? this._config.growth_list === "expanded";
+  }
+
+  /** The milestones shown in the timeline: all reached ones and the next few (or all) upcoming. */
+  _shownMilestones() {
+    const { reached, upcoming } = milestoneTimeline(this._data?.milestones);
+    return [...reached, ...(this._msShowAll ? upcoming : upcoming.slice(0, UPCOMING_SHOWN))];
+  }
+
   _milestonesHtml(d) {
-    const all = d.milestones || [];
-    const reached = all.filter((m) => m.date).length;
+    if (this._revealName) {
+      const added = (d.milestones || []).find((m) => m.custom && normalizeText(m.name) === this._revealName);
+      if (added) {
+        this._revealName = null;
+        this._revealMilestone(added.key);
+      }
+    }
+    const { reached, upcoming } = milestoneTimeline(d.milestones);
     const form = this._milestoneForm;
-    const tile = (m) => {
+    const age = (iso) => (d.birth_date ? formatAge(d.birth_date, iso) : "");
+    const typical = (m) => (m.months ? `${m.cdc ? "Most by" : "Around"} ${monthsLabel(m.months)}` : "");
+    const item = (m) => {
       const done = Boolean(m.date);
-      let sub = "";
-      if (done) sub = `${dateLabel(m.date)}${d.birth_date ? ` · ${formatAge(d.birth_date, m.date)}` : ""}`;
-      else if (m.months) sub = `${m.cdc ? "Most by" : "Around"} ${monthsLabel(m.months)}`;
-      const editing = this._milestoneEdit === m.key;
-      const button = `<button class="ms${done ? " done" : ""}${editing ? " editing" : ""}" data-action="milestone" data-value="${esc(m.key)}">
-          <ha-icon icon="${done ? "mdi:check-circle" : "mdi:circle-outline"}"></ha-icon>
-          <span class="ms-text"><span class="ms-name">${esc(m.name)}</span>${sub ? `<span class="ms-sub">${esc(sub)}</span>` : ""}</span>
-        </button>`;
-      if (!editing) return button;
-      return `${button}<div class="form ms-edit" data-submit="milestone-save">
-          <label>Reached on
-            <input id="milestone-date" type="date" max="${todayIso()}" data-form="milestone" data-field="date" value="${esc(form.date ?? todayIso())}"></label>
-          <div class="actions">
-            <button class="small primary" data-action="milestone-save" data-value="${esc(m.key)}">${done ? "Save" : "Reached"}</button>
-            ${done ? `<button class="small" data-action="milestone-clear" data-value="${esc(m.key)}">Not reached</button>` : ""}
-            ${m.custom ? `<button class="small" data-action="milestone-delete" data-value="${esc(m.key)}">Delete</button>` : ""}
-            <button class="small" data-action="milestone-cancel">Cancel</button>
-          </div>
-        </div>`;
+      const open = this._msAllOpen || this._msOpen.has(m.key);
+      const when = done ? [dateLabel(m.date), age(m.date)].filter(Boolean).join(" · ") : typical(m);
+      const details = [];
+      if (done) details.push(`Reached on ${dateLabel(m.date)}${age(m.date) ? ` (${age(m.date)})` : ""}`);
+      if (m.months) {
+        details.push(
+          m.cdc
+            ? `Most children by ${monthsLabel(m.months)} (CDC)`
+            : `Typically around ${monthsLabel(m.months)}`
+        );
+      }
+      if (m.note) details.push(`Note: ${m.note}`);
+      const dateField = `date-${m.key}`;
+      const panel = open
+        ? `<div class="ms-details">
+            ${details.map((t) => `<div>${esc(t)}</div>`).join("")}
+            <div class="form ms-edit" data-submit="milestone-save" data-value="${esc(m.key)}">
+              <label>Reached on
+                <input id="ms-date-${esc(m.key)}" type="date" max="${todayIso()}" data-form="milestone" data-field="${esc(dateField)}"
+                  value="${esc(form[dateField] ?? m.date ?? todayIso())}"></label>
+              <div class="actions">
+                <button class="small primary" data-action="milestone-save" data-value="${esc(m.key)}">${done ? "Save date" : "Reached"}</button>
+                ${done ? `<button class="small" data-action="milestone-clear" data-value="${esc(m.key)}">Not reached</button>` : ""}
+                ${m.custom ? `<button class="small" data-action="milestone-delete" data-value="${esc(m.key)}">Delete</button>` : ""}
+              </div>
+            </div>
+          </div>`
+        : "";
+      return `<li class="ms${done ? " done" : ""}${open ? " open" : ""}" data-key="${esc(m.key)}">
+          <button class="ms-row" data-action="milestone" data-value="${esc(m.key)}" aria-expanded="${open}">
+            <span class="ms-dot"><ha-icon icon="${done ? "mdi:check" : m.custom ? "mdi:star-outline" : "mdi:circle-small"}"></ha-icon></span>
+            <span class="ms-name">${esc(m.name)}</span>
+            ${when ? `<span class="ms-when">${esc(when)}</span>` : ""}
+            <ha-icon class="chevron" icon="mdi:chevron-${open ? "up" : "down"}"></ha-icon>
+          </button>
+          ${panel}
+        </li>`;
     };
-    const groups = Object.entries(MILESTONE_CATEGORIES)
-      .map(([category, title]) => {
-        const items = all.filter((m) => m.category === category);
-        if (!items.length) return "";
-        return `<div class="ms-group"><div class="ms-group-title">${title}</div><div class="ms-grid">${items.map(tile).join("")}</div></div>`;
+    const hidden = this._msShowAll ? 0 : Math.max(0, upcoming.length - UPCOMING_SHOWN);
+    const shownUpcoming = this._msShowAll ? upcoming : upcoming.slice(0, UPCOMING_SHOWN);
+    const timeline = [
+      reached.length ? `<li class="ms-label">Reached</li>${reached.map(item).join("")}` : "",
+      upcoming.length ? `<li class="ms-label">Up next</li>${shownUpcoming.map(item).join("")}` : "",
+    ].join("");
+    const more =
+      upcoming.length > UPCOMING_SHOWN
+        ? `<button class="collapse ms-more" data-action="milestones-more" aria-expanded="${this._msShowAll}">
+            <ha-icon icon="mdi:chevron-${this._msShowAll ? "up" : "down"}"></ha-icon>${this._msShowAll ? "Show fewer" : `Show ${hidden} more`}</button>`
+        : "";
+    return `
+        <div class="section milestones">
+          <div class="section-title ms-head"><span>Milestones</span>
+            <span class="ms-tools">
+              <button class="small" data-action="milestones-all" aria-pressed="${this._msAllOpen}">
+                <ha-icon icon="mdi:${this._msAllOpen ? "unfold-less-horizontal" : "unfold-more-horizontal"}"></ha-icon>${this._msAllOpen ? "Collapse all" : "Expand all"}</button>
+              <button class="small primary" data-action="milestone-add-open"><ha-icon icon="mdi:plus"></ha-icon>Add</button>
+            </span>
+          </div>
+          <ol class="ms-timeline">${timeline}</ol>
+          ${more}
+        </div>`;
+  }
+
+  // ------------------------------------------------------------ add milestone window
+
+  _openAddDialog() {
+    const dialog = this.shadowRoot.querySelector("dialog.ms-dialog");
+    if (!dialog) return;
+    this._addForm = { query: "", date: todayIso(), note: "" };
+    const name = this._data?.name ? esc(this._data.name) : "the baby";
+    dialog.innerHTML = `
+      <div class="dlg">
+        <div class="dlg-title">Add milestone</div>
+        <label>What did ${name} do?
+          <input id="ms-add-query" type="text" maxlength="100" autocomplete="off" placeholder="e.g. rolls over, first swim" data-add="query"></label>
+        <ul class="suggestions" role="listbox"></ul>
+        <div class="dlg-fields">
+          <label>Reached on <input id="ms-add-date" type="date" max="${todayIso()}" data-add="date" value="${todayIso()}"></label>
+          <label>Note <input id="ms-add-note" type="text" maxlength="200" placeholder="Optional" data-add="note"></label>
+        </div>
+        <small>Clear the date to add it as not reached yet.</small>
+        <div class="dlg-actions">
+          <button class="small" data-action="add-cancel">Cancel</button>
+          <button class="small primary" data-action="add-new" disabled>Add as new</button>
+        </div>
+      </div>`;
+    this._updateSuggestions();
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    dialog.querySelector("#ms-add-query").focus();
+  }
+
+  _closeAddDialog() {
+    const dialog = this.shadowRoot.querySelector("dialog.ms-dialog");
+    if (dialog?.open) {
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.removeAttribute("open");
+    }
+    this._addForm = null;
+  }
+
+  /** Update the suggestions and the "Add as new" button without touching the inputs. */
+  _updateSuggestions() {
+    const dialog = this.shadowRoot.querySelector("dialog.ms-dialog");
+    if (!dialog || !this._addForm) return;
+    const query = this._addForm.query.trim();
+    const matches = matchMilestones(query, this._data?.milestones || []);
+    dialog.querySelector(".suggestions").innerHTML = matches
+      .map((m) => {
+        const status = m.date ? `Reached ${dateLabel(m.date)}` : MILESTONE_CATEGORIES[m.category] || "";
+        return `<li><button class="suggestion${m.date ? " done" : ""}" data-action="add-pick" data-value="${esc(m.key)}" role="option">
+            <ha-icon icon="${m.date ? "mdi:check-circle" : "mdi:circle-outline"}"></ha-icon>
+            <span class="ms-name">${esc(m.name)}</span><span class="ms-when">${esc(status)}</span></button></li>`;
       })
       .join("");
-    return `
-        <div class="section">
-          <div class="section-title">Milestones<span class="count">${reached} of ${all.length} reached</span></div>
-          ${groups}
-          <div class="form" data-submit="milestone-add">
-            <label>Add your own <input id="milestone-name" type="text" maxlength="100" placeholder="e.g. First swim" data-form="milestone" data-field="name" value="${esc(form.name ?? "")}"></label>
-            <label>Reached on (clear if not yet) <input id="milestone-new-date" type="date" max="${todayIso()}" data-form="milestone" data-field="newDate" value="${esc(form.newDate ?? todayIso())}"></label>
-            <div class="actions"><button class="small primary" data-action="milestone-add"><ha-icon icon="mdi:plus"></ha-icon>Add</button></div>
-          </div>
-        </div>`;
+    const wanted = normalizeText(query);
+    const exact = Boolean(wanted) && (this._data?.milestones || []).some((m) => normalizeText(m.name) === wanted);
+    const add = dialog.querySelector('[data-action="add-new"]');
+    add.disabled = !query || exact;
+    add.textContent = query ? `Add “${query.length > 30 ? `${query.slice(0, 30)}…` : query}” as new` : "Add as new";
+  }
+
+  _handleDialogInput(ev) {
+    const field = ev.target.dataset.add;
+    if (!field || !this._addForm) return;
+    this._addForm[field] = ev.target.value;
+    if (field === "query") this._updateSuggestions();
+  }
+
+  _handleDialogClick(ev) {
+    const dialog = ev.currentTarget;
+    // A click on the backdrop closes the window.
+    if (ev.target === dialog) {
+      this._closeAddDialog();
+      return;
+    }
+    const target = ev.target.closest("[data-action]");
+    if (!target || !this._addForm) return;
+    const { action, value } = target.dataset;
+    if (action === "add-cancel") this._closeAddDialog();
+    else if (action === "add-new") this._addAsNew();
+    else if (action === "add-pick") {
+      const { date, note } = this._addForm;
+      const picked = (this._data?.milestones || []).find((m) => m.key === value);
+      const show = () => {
+        this._closeAddDialog();
+        this._revealMilestone(value);
+        this._render();
+      };
+      // Already reached, or added as not reached yet: just show it (its date can be changed there).
+      if (!picked || picked.date || !date) {
+        show();
+        return;
+      }
+      const data = { milestone: value, date };
+      if (note.trim()) data.note = note.trim();
+      this._call("set_milestone", data).then((ok) => {
+        if (ok) show();
+      });
+    }
+  }
+
+  _addAsNew() {
+    if (!this._addForm) return;
+    const name = this._addForm.query.trim();
+    const button = this.shadowRoot.querySelector('dialog [data-action="add-new"]');
+    if (!name || button?.disabled) return;
+    const data = { name };
+    if (this._addForm.date) data.date = this._addForm.date;
+    if (this._addForm.note.trim()) data.note = this._addForm.note.trim();
+    this._call("add_milestone", data).then((ok) => {
+      if (ok) {
+        this._closeAddDialog();
+        // Show it once the new snapshot arrives, even if it would be behind "Show more".
+        this._revealName = normalizeText(name);
+        this._render();
+      }
+    });
+  }
+
+  /** Expand a milestone and make sure it is listed (not hidden behind "Show more"). */
+  _revealMilestone(key) {
+    this._msOpen.add(key);
+    const { upcoming } = milestoneTimeline(this._data?.milestones);
+    const index = upcoming.findIndex((m) => m.key === key);
+    if (index >= UPCOMING_SHOWN) this._msShowAll = true;
   }
 
   _summaryHtml(d) {
@@ -1684,21 +2065,52 @@ const STYLE = `
   .form .pair input { flex: 1; }
   .form .actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .form-toggle { margin-top: 12px; }
-  .section-title .count { font-weight: 400; color: var(--secondary-text-color); font-size: 0.85em; margin-left: 6px; }
-  .ms-group { margin-top: 12px; }
-  .section-title + .ms-group { margin-top: 0; }
-  .ms-group-title { font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
-  .ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
-  .ms { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 10px; border-radius: 10px; text-align: left;
-    background: var(--secondary-background-color); border: 2px solid transparent; }
-  .ms.done { background: color-mix(in srgb, var(--success-color, #43a047) 14%, var(--secondary-background-color)); }
-  .ms.editing { border-color: var(--primary-color); }
-  .ms ha-icon { --mdc-icon-size: 22px; color: var(--secondary-text-color); flex: none; }
-  .ms.done ha-icon { color: var(--success-color, #43a047); }
-  .ms-text { display: flex; flex-direction: column; min-width: 0; }
-  .ms-name { font-size: 0.9em; line-height: 1.2; }
-  .ms-sub { font-size: 0.75em; color: var(--secondary-text-color); }
-  .ms-edit { grid-column: 1 / -1; margin-top: 0; }
+  .count { font-weight: 400; color: var(--secondary-text-color); font-size: 0.85em; margin-left: 6px; }
+  button.collapse { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 12px; padding: 6px 0; background: none;
+    border: none; border-top: 1px solid var(--divider-color); color: var(--primary-text-color); font-weight: 500; text-align: left; }
+  button.collapse ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+  .growth-list { margin-top: 2px; }
+  .ms-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .ms-tools { display: flex; gap: 6px; }
+  .ms-tools ha-icon, .form-toggle ha-icon { --mdc-icon-size: 18px; }
+  .ms-timeline { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
+  .ms-timeline::before { content: ""; position: absolute; left: 15px; top: 4px; bottom: 4px; width: 2px; background: var(--divider-color); }
+  .ms-label { position: relative; padding: 10px 0 4px 32px; font-size: 0.75em; font-weight: 500; color: var(--secondary-text-color);
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  .ms { position: relative; }
+  .ms-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 4px 0; background: none; border: none;
+    text-align: left; color: var(--primary-text-color); }
+  .ms-dot { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; position: relative;
+    background: var(--card-background-color); border: 2px solid var(--divider-color); color: var(--secondary-text-color); }
+  .ms-dot ha-icon { --mdc-icon-size: 16px; }
+  .ms.done .ms-dot { background: var(--success-color, #43a047); border-color: var(--success-color, #43a047); color: #fff; }
+  .ms-name { flex: 1; min-width: 0; font-size: 0.92em; line-height: 1.25; }
+  .ms-when { flex: none; max-width: 45%; font-size: 0.78em; color: var(--secondary-text-color); text-align: right; }
+  .ms-row .chevron { --mdc-icon-size: 18px; color: var(--secondary-text-color); flex: none; }
+  .ms.open .ms-row .ms-name { font-weight: 500; }
+  .ms-details { margin: 0 0 8px 34px; padding: 8px 10px; border-radius: 10px; background: var(--secondary-background-color);
+    font-size: 0.85em; display: grid; gap: 4px; }
+  .ms-details .form { margin-top: 4px; }
+  .ms-more { border-top: none; margin-top: 4px; font-weight: 400; color: var(--primary-color); }
+  dialog.ms-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: none; border-radius: 16px;
+    background: var(--card-background-color, #fff); color: var(--primary-text-color); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); }
+  dialog.ms-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+  .dlg { display: grid; gap: 10px; padding: 16px; font-family: var(--paper-font-body1_-_font-family, inherit); }
+  .dlg-title { font-size: 1.15em; font-weight: 500; }
+  .dlg label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8em; color: var(--secondary-text-color); }
+  .dlg input { padding: 8px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--card-background-color);
+    color: var(--primary-text-color); font: inherit; font-size: 1rem; min-width: 0; }
+  .dlg-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dlg small { color: var(--secondary-text-color); margin-top: -4px; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+  .dlg button[disabled] { opacity: 0.5; cursor: default; }
+  .suggestions { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .suggestions:empty { display: none; }
+  .suggestion { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left;
+    background: var(--secondary-background-color); border: 1px solid transparent; color: var(--primary-text-color); }
+  .suggestion:hover, .suggestion:focus-visible { border-color: var(--primary-color); }
+  .suggestion ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: none; }
+  .suggestion.done ha-icon { color: var(--success-color, #43a047); }
   .log { list-style: none; margin: 0; padding: 0; }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .log li.day { border: none; padding-top: 10px; font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1870,6 +2282,10 @@ class BabyTrackerCardEditor extends HTMLElement {
           <option value="imperial" ${c.units === "imperial" ? "selected" : ""}>Imperial (lb + oz, in)</option>
         </select></label>
         <label>Measurements listed under the growth charts <input type="number" min="0" max="100" data-key="growth_entries" value="${esc(c.growth_entries)}"></label>
+        <label>Measurement list <select data-key="growth_list">
+          <option value="collapsed" ${c.growth_list === "expanded" ? "" : "selected"}>Collapsed</option>
+          <option value="expanded" ${c.growth_list === "expanded" ? "selected" : ""}>Expanded</option>
+        </select></label>
         <label>Days of history <input type="number" min="1" max="31" data-key="days" value="${esc(c.days)}"></label>
       </div>`;
     this.querySelectorAll("[data-key]").forEach((el) => {

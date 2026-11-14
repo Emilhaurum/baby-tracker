@@ -104,6 +104,16 @@ async def test_milestones(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     await call(hass, "undo")
     assert tracker.milestones_done["first_smile"]["date"].isoformat() == "2026-02-10"
 
+    # Changing only the date keeps the note; an empty note removes it.
+    await call(hass, "set_milestone", milestone="first_smile", date="2026-02-12", note="At grandma's")
+    await call(hass, "set_milestone", milestone="first_smile", date="2026-02-11")
+    assert tracker.milestones_done["first_smile"] == {
+        "date": tracker.milestones_done["first_smile"]["date"],
+        "note": "At grandma's",
+    }
+    await call(hass, "set_milestone", milestone="first_smile", date="2026-02-11", note="")
+    assert tracker.milestones_done["first_smile"]["note"] is None
+
     await call(hass, "clear_milestone", milestone="first_smile")
     assert "first_smile" not in tracker.milestones_done
     await call(hass, "undo")
@@ -175,6 +185,7 @@ async def test_snapshot(hass: HomeAssistant, entry: MockConfigEntry, hass_ws_cli
         "category": "movement",
         "months": 12,
         "cdc": False,
+        "tags": ["walk", "walking", "steps", "step", "toddle"],
         "custom": False,
         "date": None,
         "note": None,
@@ -273,3 +284,8 @@ async def test_catalogue_is_consistent() -> None:
     keys = [m.key for m in MILESTONES]
     assert len(keys) == len(set(keys))
     assert all(m.months is None or 1 <= m.months <= 36 for m in MILESTONES)
+    # Every built-in milestone has search tags: lower case, no duplicates.
+    for m in MILESTONES:
+        assert m.tags, m.key
+        assert all(t == t.strip().lower() and t for t in m.tags), m.key
+        assert len(m.tags) == len(set(m.tags)), m.key

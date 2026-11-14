@@ -681,10 +681,16 @@ class BabyTracker:
 
     @callback
     def async_set_milestone(self, key: str, when: date | None = None, note: str | None = None) -> date:
-        """Mark a milestone as reached (or change its date)."""
+        """Mark a milestone as reached (or change its date).
+
+        Without a note an existing note is kept; an empty note removes it.
+        """
         name = self.milestone_name(key)
         at = self._check_date(when)
-        self._set_undo("milestone", self._restore_milestone(key, self.milestones_done.get(key)))
+        previous = self.milestones_done.get(key)
+        self._set_undo("milestone", self._restore_milestone(key, previous))
+        if note is None and previous:
+            note = previous["note"]
         self.milestones_done[key] = {"date": at, "note": note or None}
         self._changed("milestone", {"milestone": key, "milestone_name": name, "date": at.isoformat()})
         return at
@@ -763,6 +769,7 @@ class BabyTracker:
                 "category": m.category,
                 "months": m.months,
                 "cdc": m.cdc,
+                "tags": list(m.tags),
                 "custom": False,
                 **state(m.key),
             }
@@ -775,6 +782,7 @@ class BabyTracker:
                 "category": "custom",
                 "months": None,
                 "cdc": False,
+                "tags": [],
                 "custom": True,
                 **state(c["id"]),
             }

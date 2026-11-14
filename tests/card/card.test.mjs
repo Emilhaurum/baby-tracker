@@ -63,10 +63,14 @@ function snapshot(overrides = {}) {
       { id: "g3", date: "2026-05-01", weight_kg: 6.1, length_cm: null, note: null },
     ],
     milestones: [
-      { key: "head_up_tummy", name: "Holds head up on tummy", category: "movement", months: 2, cdc: true, custom: false, date: "2026-03-10", note: null },
-      { key: "crawls", name: "Crawls", category: "movement", months: 9, cdc: false, custom: false, date: null, note: null },
-      { key: "first_smile", name: "First social smile", category: "social", months: 2, cdc: true, custom: false, date: "2026-02-20", note: null },
-      { key: "custom_abc", name: "First swim", category: "custom", months: null, cdc: false, custom: true, date: "2026-04-02", note: null },
+      { key: "head_up_tummy", name: "Holds head up on tummy", category: "movement", months: 2, cdc: true, tags: ["head", "tummy time"], custom: false, date: "2026-03-10", note: null },
+      { key: "crawls", name: "Crawls", category: "movement", months: 9, cdc: false, tags: ["crawl", "crawling"], custom: false, date: null, note: null },
+      { key: "first_smile", name: "First social smile", category: "social", months: 2, cdc: true, tags: ["smile"], custom: false, date: "2026-02-20", note: "At grandma's" },
+      { key: "custom_abc", name: "First swim", category: "custom", months: null, cdc: false, tags: [], custom: true, date: "2026-04-02", note: null },
+      { key: "rolls_tummy_to_back", name: "Rolls from tummy to back", category: "movement", months: 6, cdc: true, tags: ["roll", "rolling", "rolls over", "turns over"], custom: false, date: null, note: null },
+      { key: "sits_without_support", name: "Sits without support", category: "movement", months: 9, cdc: true, tags: ["sit", "sitting"], custom: false, date: null, note: null },
+      { key: "first_steps", name: "First steps on their own", category: "movement", months: 12, cdc: false, tags: ["walk", "walking", "steps"], custom: false, date: null, note: null },
+      { key: "first_tooth", name: "First tooth", category: "firsts", months: 6, cdc: false, tags: ["tooth", "teeth", "teething"], custom: false, date: null, note: null },
     ],
     ...overrides,
   };
@@ -373,6 +377,15 @@ test("growth: latest values, charts and adding a metric measurement", async () =
   ]);
   assert.equal(await card.locator(".form").count(), 0);
 
+  // The measurement list starts collapsed.
+  assert.equal(await card.locator(".growth-list").count(), 0);
+  assert.equal((await card.locator('[data-action="growth-list"]').textContent()).replace(/\s+/g, " ").trim(), "Measurements3");
+  await card.locator('[data-action="growth-list"]').click();
+  assert.equal(await card.locator(".growth-list li").count(), 3);
+  // It stays open across updates.
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(20);
+  assert.equal(await card.locator(".growth-list li").count(), 3);
   page.once("dialog", (dialog) => dialog.accept());
   await card.locator('[data-action="growth-delete"][data-value="g3"]').click();
   assert.deepEqual((await calls(page)).at(-1), ["delete_growth", { config_entry_id: "e1", event_id: "g3" }]);
@@ -398,6 +411,15 @@ test("growth in imperial units", async () => {
   await context.close();
 });
 
+test("growth list can start expanded", async () => {
+  const { page, context } = await mount({ config: { parts: ["growth"], growth_list: "expanded", growth_entries: 2 } });
+  const card = page.locator("baby-logger-card");
+  assert.equal(await card.locator(".growth-list li").count(), 2);
+  await card.locator('[data-action="growth-list"]').click();
+  assert.equal(await card.locator(".growth-list").count(), 0);
+  await context.close();
+});
+
 test("growth without a birth date uses dates", async () => {
   const { page, context } = await mount({ config: { parts: ["growth"] }, snap: snapshot({ birth_date: null }) });
   const card = page.locator("baby-logger-card");
@@ -406,48 +428,203 @@ test("growth without a birth date uses dates", async () => {
   await context.close();
 });
 
-test("milestone board", async () => {
+test("milestone timeline", async () => {
   const { page, context, errors } = await mount({ config: { parts: ["milestones"] } });
   const card = page.locator("baby-logger-card");
-  assert.equal(await card.locator(".section-title .count").textContent(), "3 of 4 reached");
-  assert.deepEqual(await card.locator(".ms-group-title").allTextContents(), ["Movement", "Social", "Your milestones"]);
-  assert.equal(await card.locator('.ms.done[data-value="head_up_tummy"] .ms-sub').textContent(), "Mar 10, 2026 · 7 weeks");
-  assert.equal(await card.locator('.ms[data-value="crawls"] .ms-sub').textContent(), "Around 9 months");
-  assert.equal(await card.locator('.ms[data-value="crawls"].done').count(), 0);
+  const names = () => card.locator(".ms .ms-name").allTextContents();
+  // No "x of y reached" count.
+  assert.equal(await card.locator(".count").count(), 0);
+  assert.equal((await card.locator(".section-title").textContent()).includes("reached"), false);
+  // Reached ones by date, then the next few by typical age.
+  assert.deepEqual(await card.locator(".ms-label").allTextContents(), ["Reached", "Up next"]);
+  assert.deepEqual(await names(), [
+    "First social smile",
+    "Holds head up on tummy",
+    "First swim",
+    "Rolls from tummy to back",
+    "First tooth",
+    "Crawls",
+    "Sits without support",
+  ]);
+  assert.equal(await card.locator('.ms[data-key="head_up_tummy"] .ms-when').textContent(), "Mar 10, 2026 · 7 weeks");
+  assert.equal(await card.locator('.ms[data-key="crawls"] .ms-when').textContent(), "Around 9 months");
+  // Collapsed: no details until tapped.
+  assert.equal(await card.locator(".ms-details").count(), 0);
   await shot(page, "milestones");
 
-  // Reach a milestone (today by default, or another date).
-  await card.locator('.ms[data-value="crawls"]').click();
-  assert.equal(await card.locator("#milestone-date").inputValue(), "2026-05-05");
-  await card.locator("#milestone-date").fill("2026-05-01");
-  await card.locator('[data-action="milestone-save"]').click();
-  assert.deepEqual((await calls(page)).at(-1), [
-    "set_milestone",
-    { config_entry_id: "e1", milestone: "crawls", date: "2026-05-01" },
-  ]);
+  // Show the rest of the upcoming ones.
+  await card.locator('[data-action="milestones-more"]').click();
+  assert.equal((await names()).at(-1), "First steps on their own");
+  await card.locator('[data-action="milestones-more"]').click();
+  assert.equal((await names()).length, 7);
+
+  // Expand one: details, and reach it (today by default, or another date).
+  await card.locator('.ms-row[data-value="crawls"]').click();
+  assert.equal(await card.locator(".ms-details").count(), 1);
+  assert.ok((await card.locator('.ms[data-key="crawls"] .ms-details').textContent()).includes("Typically around 9 months"));
+  assert.equal(await card.locator("#ms-date-crawls").inputValue(), "2026-05-05");
+  await card.locator("#ms-date-crawls").fill("2026-05-01");
+  // Picking a date survives an update.
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(20);
+  assert.equal(await card.locator("#ms-date-crawls").inputValue(), "2026-05-01");
+  await card.locator('.ms[data-key="crawls"] [data-action="milestone-save"]').click();
+  assert.deepEqual((await calls(page)).at(-1), ["set_milestone", { config_entry_id: "e1", milestone: "crawls", date: "2026-05-01" }]);
+  // Tap again to collapse; an unsaved date is forgotten.
+  await card.locator('.ms-row[data-value="crawls"]').click();
+  assert.equal(await card.locator(".ms-details").count(), 0);
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
+  await card.locator("#ms-date-first_tooth").fill("2026-04-01");
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
+  assert.equal(await card.locator("#ms-date-first_tooth").inputValue(), "2026-05-05");
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
+
+  // Expand all, then collapse all.
+  await card.locator('[data-action="milestones-all"]').click();
+  assert.equal(await card.locator(".ms-details").count(), 7);
+  const smile = await card.locator('.ms[data-key="first_smile"] .ms-details').textContent();
+  assert.ok(smile.includes("Reached on Feb 20, 2026 (5 weeks)"), smile);
+  assert.ok(smile.includes("Most children by 2 months (CDC)"), smile);
+  assert.ok(smile.includes("Note: At grandma's"), smile);
+  await shot(page, "milestones-expanded");
+  // Collapsing one while all are open keeps the others open.
+  await card.locator('.ms-row[data-value="crawls"]').click();
+  assert.equal(await card.locator(".ms-details").count(), 6);
+  await card.locator('[data-action="milestones-all"]').click();
+  assert.equal(await card.locator('[data-action="milestones-all"]').getAttribute("aria-pressed"), "true");
+  await card.locator('[data-action="milestones-all"]').click();
+  assert.equal(await card.locator(".ms-details").count(), 0);
 
   // Mark a reached milestone as not reached.
-  await card.locator('.ms[data-value="first_smile"]').click();
-  assert.equal(await card.locator("#milestone-date").inputValue(), "2026-02-20");
-  await card.locator('[data-action="milestone-clear"]').click();
+  await card.locator('.ms-row[data-value="first_smile"]').click();
+  assert.equal(await card.locator("#ms-date-first_smile").inputValue(), "2026-02-20");
+  await card.locator('.ms[data-key="first_smile"] [data-action="milestone-clear"]').click();
   assert.deepEqual((await calls(page)).at(-1), ["clear_milestone", { config_entry_id: "e1", milestone: "first_smile" }]);
 
-  // Add one of your own.
-  await card.locator("#milestone-name").fill("First trip to the beach");
-  await card.locator("#milestone-name").press("Enter");
-  assert.deepEqual((await calls(page)).at(-1), [
-    "add_milestone",
-    { config_entry_id: "e1", name: "First trip to the beach", date: "2026-05-05" },
-  ]);
-  assert.equal(await card.locator("#milestone-name").inputValue(), "");
-
   // Only your own can be deleted.
-  await card.locator('.ms[data-value="head_up_tummy"]').click();
-  assert.equal(await card.locator('[data-action="milestone-delete"]').count(), 0);
-  await card.locator('.ms[data-value="custom_abc"]').click();
+  await card.locator('.ms-row[data-value="head_up_tummy"]').click();
+  assert.equal(await card.locator('.ms[data-key="head_up_tummy"] [data-action="milestone-delete"]').count(), 0);
+  await card.locator('.ms-row[data-value="custom_abc"]').click();
   page.once("dialog", (dialog) => dialog.accept());
-  await card.locator('[data-action="milestone-delete"]').click();
+  await card.locator('.ms[data-key="custom_abc"] [data-action="milestone-delete"]').click();
   assert.deepEqual((await calls(page)).at(-1), ["delete_milestone", { config_entry_id: "e1", milestone: "custom_abc" }]);
   assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("add milestone window suggests similar milestones", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["milestones"] } });
+  const card = page.locator("baby-logger-card");
+  const dialog = card.locator("dialog.ms-dialog");
+  const suggestions = () => dialog.locator(".suggestion .ms-name").allTextContents();
+  await card.locator('[data-action="milestone-add-open"]').click();
+  assert.ok(await dialog.evaluate((d) => d.open));
+  assert.equal(await dialog.locator('[data-action="add-new"]').isDisabled(), true);
+
+  // Tags: "rolling over" finds "Rolls from tummy to back"; "walking" finds first steps.
+  await dialog.locator("#ms-add-query").fill("rolling over");
+  assert.deepEqual(await suggestions(), ["Rolls from tummy to back"]);
+  await dialog.locator("#ms-add-query").fill("Walking");
+  assert.deepEqual(await suggestions(), ["First steps on their own"]);
+  // Typos and accents.
+  await dialog.locator("#ms-add-query").fill("crwal");
+  assert.deepEqual(await suggestions(), ["Crawls"]);
+  await dialog.locator("#ms-add-query").fill("teéth");
+  assert.deepEqual(await suggestions(), ["First tooth"]);
+  await shot(page, "milestone-add");
+
+  // Picking a suggestion marks it as reached with the date and note.
+  await dialog.locator("#ms-add-note").fill("Two at once");
+  await dialog.locator('.suggestion[data-value="first_tooth"]').click();
+  assert.deepEqual((await calls(page)).at(-1), [
+    "set_milestone",
+    { config_entry_id: "e1", milestone: "first_tooth", date: "2026-05-05", note: "Two at once" },
+  ]);
+  assert.equal(await dialog.evaluate((d) => d.open), false);
+  // ... and shows it expanded in the timeline.
+  assert.equal(await card.locator('.ms[data-key="first_tooth"] .ms-details').count(), 1);
+
+  // Something new: added as your own, here as not reached yet (date cleared).
+  await card.locator('[data-action="milestone-add-open"]').click();
+  await dialog.locator("#ms-add-query").fill("First trip to the beach");
+  // Updates don't touch the window while typing.
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(20);
+  assert.equal(await dialog.locator("#ms-add-query").inputValue(), "First trip to the beach");
+  await dialog.locator("#ms-add-date").fill("");
+  assert.equal(await dialog.locator('[data-action="add-new"]').textContent(), "Add “First trip to the beach” as new");
+  await dialog.locator("#ms-add-query").press("Enter");
+  assert.deepEqual((await calls(page)).at(-1), ["add_milestone", { config_entry_id: "e1", name: "First trip to the beach" }]);
+  assert.equal(await dialog.evaluate((d) => d.open), false);
+
+  // A new milestone not reached yet is shown expanded once it arrives, not hidden behind "Show more".
+  const withNew = snapshot();
+  withNew.milestones = [...withNew.milestones, { key: "custom_new", name: "First trip to the beach", category: "custom", months: null, cdc: false, tags: [], custom: true, date: null, note: null }];
+  await page.evaluate((snap) => window.hass.push(snap), withNew);
+  await page.waitForTimeout(20);
+  assert.equal(await card.locator('.ms[data-key="custom_new"] .ms-details').count(), 1);
+
+  // Picking one already reached just shows it; its date isn't changed.
+  const before = (await calls(page)).length;
+  await card.locator('[data-action="milestone-add-open"]').click();
+  await dialog.locator("#ms-add-query").fill("smile");
+  await dialog.locator('.suggestion[data-value="first_smile"]').click();
+  assert.equal((await calls(page)).length, before);
+  assert.equal(await dialog.evaluate((d) => d.open), false);
+  assert.equal(await card.locator('.ms[data-key="first_smile"] .ms-details').count(), 1);
+
+  // An exact name match can't be added again; Cancel closes.
+  await card.locator('[data-action="milestone-add-open"]').click();
+  await dialog.locator("#ms-add-query").fill("first swim");
+  assert.equal(await dialog.locator('[data-action="add-new"]').isDisabled(), true);
+  assert.equal(await dialog.locator('.suggestion.done').count(), 1);
+  await dialog.locator('[data-action="add-cancel"]').click();
+  assert.equal(await dialog.evaluate((d) => d.open), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("updates don't scroll the page to a focused field", async () => {
+  const { page, context } = await mount({ config: { parts: ["growth", "header", "tiles", "summary", "trends", "log"] } });
+  const card = page.locator("baby-logger-card");
+  await card.locator('[data-action="growth-open"]').click();
+  await card.locator("#growth-weight").fill("6.5");
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const before = await page.evaluate(() => window.scrollY);
+  assert.ok(before > 300, `scrolled to ${before}`);
+  const today = snapshot().today;
+  await page.evaluate((snap) => window.hass.push(snap), snapshot({ revision: 42, today: { ...today, diapers: { ...today.diapers, total: 9 } } }));
+  await page.waitForTimeout(50);
+  assert.equal(await page.evaluate(() => window.scrollY), before);
+  // The field keeps its value and focus ...
+  assert.equal(await card.locator("#growth-weight").inputValue(), "6.5");
+  assert.equal(await page.evaluate(() => document.querySelector("baby-logger-card").shadowRoot.activeElement?.id), "growth-weight");
+  // ... while the other parts are updated straight away.
+  assert.equal(await card.locator(".chip").first().textContent(), "9 diapers");
+  await context.close();
+});
+
+test("a rebuilt card keeps the page where it was", async () => {
+  const { page, context } = await mount({ config: {} });
+  await page.evaluate(() => window.scrollTo(0, 1500));
+  const before = await page.evaluate(() => window.scrollY);
+  assert.ok(before > 1000, `scrolled to ${before}`);
+  // Home Assistant builds the dashboard's cards again, e.g. when the app resumes.
+  const first = await page.evaluate(() => {
+    const old = document.querySelector("baby-logger-card");
+    const card = document.createElement("baby-logger-card");
+    card.setConfig({});
+    old.replaceWith(card);
+    card.hass = window.hass;
+    // Tapped before the subscription is ready: still sent for the right baby.
+    card.shadowRoot.querySelector('[data-action="diaper"][data-value="wet"]').click();
+    return { height: card.getBoundingClientRect().height, scrollY: window.scrollY, entry: window.hass.calls.at(-1)?.data.config_entry_id };
+  });
+  assert.ok(first.height > 1500, `first render height ${first.height}`);
+  assert.equal(first.scrollY, before);
+  assert.equal(first.entry, "e1");
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => window.scrollY), before);
   await context.close();
 });

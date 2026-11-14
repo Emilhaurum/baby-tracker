@@ -42,8 +42,9 @@ Everything is stored locally in Home Assistant.
   It is served by the integration, so there is nothing else to install.
 - **Growth**: log weight and length now and then and follow them on a chart over the
   baby's age, for years. Metric (kg, cm) or imperial (lb + oz, in).
-- **Milestones**: a board of 31 common milestones (holding up their head, rolling,
-  sitting, crawling, first word, first steps …) with typical ages, plus your own.
+- **Milestones**: a timeline of 31 common milestones (holding up their head, rolling,
+  sitting, crawling, first word, first steps …) with typical ages, plus your own. Adding one
+  suggests similar milestones as you type.
 - **Several babies**: add the integration once per baby.
 - Logbook entries and a `baby_logger_event` event for every action, for use in automations.
 
@@ -92,6 +93,7 @@ type: custom:baby-logger-card
 | `buttons_columns` | `3` | Quick buttons per row. |
 | `units` | `metric` | Units for growth: `metric` (kg, cm) or `imperial` (lb + oz, in). |
 | `growth_entries` | `5` | Measurements listed under the growth charts (0 hides the list). |
+| `growth_list` | `collapsed` | Whether the measurement list starts `collapsed` or `expanded`. |
 | `show_summary` | `true` | Show last night and daytime sleep. |
 | `show_trends` | `true` | Show the diaper, feeding and sleep charts. |
 | `show_nights` | `true` | Show the night sleep chart. |
@@ -123,7 +125,7 @@ Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to dele
 | `timeline` | The sleep timeline. |
 | `log` | The latest entries. |
 | `growth` | Weight and length charts, the latest measurements and a form to add one. |
-| `milestones` | The milestone board. |
+| `milestones` | The milestone timeline, with a window to add milestones. |
 
 Without `parts` the card shows `header`, `undo` and `tiles`, followed by the parts turned
 on with the `show_*` options, so existing cards look the same. If `undo` isn't listed, the
@@ -194,11 +196,20 @@ units: imperial   # leave out for metric
 the length or both. With `units: imperial` the weight is entered as pounds and ounces and the
 length in inches; everything is stored in metric, so you can switch units at any time. The
 charts show each measurement against the baby's age (or the date, if no birth date is set),
-from the first weeks to several years. Tap ✕ next to a measurement to delete it.
+from the first weeks to several years. Under the charts, tap **Measurements** to show or
+hide the list of measurements (`growth_list` sets how it starts), and tap ✕ next to a
+measurement to delete it.
 
-**Milestones**: tap a milestone to mark it as reached (today, or pick the date), and tap it
-again to change the date or mark it as not reached. Under the board you can add your own,
-such as "First swim" (clear its date to add it as not reached yet). Not-yet-reached milestones show a typical age: *Most by 9 months*
+**Milestones** are shown as a timeline: the ones reached, in the order they happened, then
+the next few to look out for (**Show more** lists the rest). Tap a milestone to expand it and
+see when it was reached, its typical age and note, and to set or change the date, mark it as
+not reached or delete one of your own. **Expand all** opens them all at once.
+
+Tap **Add** to record a milestone. As you type, similar milestones are suggested, so
+"rolling over", "walking" or "teething" find the built-in ones without typing their exact
+names (built-in milestones have tags, and small typos are fine). Pick a suggestion to mark it
+as reached, or add what you typed as your own, such as "First swim". Clear the date to add it
+as not reached yet. Not-yet-reached milestones show a typical age: *Most by 9 months*
 is the age by which most children (75%) reach it according to the
 [CDC milestone checklists](https://www.cdc.gov/act-early/milestones/index.html);
 *Around 6 months* is a typical age for common "firsts" such as the first tooth. Every child
@@ -206,7 +217,8 @@ develops at their own pace; these are a guide, not a test. Talk to your doctor i
 worried.
 
 ![Growth chart](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/growth.png)
-![Milestone board](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/milestones.png)
+![Milestone timeline](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/milestones.png)
+![Adding a milestone](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/milestone-add.png)
 
 ### More examples
 
@@ -286,7 +298,7 @@ can't be in the future.
 | `baby_logger.delete_event` | `event_id` |
 | `baby_logger.log_growth` | `weight`, `length` (at least one), `units` (`metric`: kg / cm, default; `imperial`: lb / in), `date`, `note` |
 | `baby_logger.delete_growth` | `event_id` (the measurement's `id`) |
-| `baby_logger.set_milestone` | `milestone` (e.g. `first_steps`, or the id of one you added), `date`, `note` |
+| `baby_logger.set_milestone` | `milestone` (e.g. `first_steps`, or the id of one you added), `date`, `note` (left out: the current note is kept; empty: removed) |
 | `baby_logger.clear_milestone` | `milestone` |
 | `baby_logger.add_milestone` | `name`, `date` (leave out to add it as not reached yet), `note` |
 | `baby_logger.delete_milestone` | `milestone` (only ones you added) |
