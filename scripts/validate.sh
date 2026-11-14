@@ -52,6 +52,12 @@ if [[ "${1:-}" == "--e2e" ]]; then
   hass_pid=$!
   python tests/e2e/setup_instance.py http://localhost:8123 > "$work/tokens.json"
   node tests/e2e/card.mjs http://localhost:8123 "$work/tokens.json" "$work/output"
+  node tests/e2e/scroll.mjs http://localhost:8123 "$work/tokens.json" chromium
+  if node -e "require('playwright').webkit.launch().then((b) => b.close())" 2> /dev/null; then
+    node tests/e2e/scroll.mjs http://localhost:8123 "$work/tokens.json" webkit
+  else
+    echo "Playwright WebKit not installed: skipping the WebKit (iOS) scroll test"
+  fi
   if grep -E "ERROR.*baby_logger|Traceback.*baby_logger" "$work/hass.log"; then
     echo "Errors from baby_logger in the Home Assistant log" >&2
     exit 1

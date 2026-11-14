@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Card: the page no longer jumps on iPhone and iPad (Safari, including the Home Assistant
+  app) when the card changes: on expanding or collapsing, every minute's update and after
+  reconnecting. The card used a CSS container query, which made Safari scroll the page
+  whenever the card's content changed; wider layouts now follow the card's width without
+  it. The card also keeps what you are reading in place when content above it changes
+  height (Safari doesn't always do this itself), and a card that Home Assistant builds
+  again shows its last data straight away.
+
 ## 1.2.0
 
 - Actions reject times in the future (`time`, `start`, `end`, and moving a sleep in the

@@ -269,6 +269,23 @@ test("configured buttons", async () => {
   await context.close();
 });
 
+test("wider cards get two and three columns from their width", async () => {
+  for (const [width, classes, columns] of [
+    [420, [], 1],
+    [520, ["w420"], 2],
+    [760, ["w420", "w700"], 3],
+  ]) {
+    const { page, context } = await mount({ width });
+    const result = await page.evaluate(() => {
+      const card = document.querySelector("baby-logger-card").shadowRoot.querySelector("ha-card");
+      const tiles = card.querySelector(".tiles");
+      return { classes: [...card.classList].sort(), columns: getComputedStyle(tiles).gridTemplateColumns.split(" ").length };
+    });
+    assert.deepEqual(result, { classes, columns }, `width ${width}`);
+    await context.close();
+  }
+});
+
 test("dark theme", async () => {
   const { page, context } = await mount({ config: { parts: ["header", "buttons", "summary"] }, dark: true });
   const bg = await page.locator("baby-logger-card .qb").first().evaluate((e) => getComputedStyle(e).backgroundColor);

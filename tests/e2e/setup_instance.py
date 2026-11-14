@@ -147,6 +147,18 @@ async def main(base: str) -> None:
                                     }
                                 ],
                             },
+                            {
+                                # Both cards on one view, taller than a phone screen (scroll.mjs).
+                                "title": "Phone",
+                                "path": "phone",
+                                "cards": [
+                                    {"type": "custom:baby-logger-card"},
+                                    {
+                                        "type": "custom:baby-logger-card",
+                                        "parts": ["buttons", "growth", "milestones"],
+                                    },
+                                ],
+                            },
                         ]
                     },
                 }
