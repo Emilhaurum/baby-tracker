@@ -27,6 +27,7 @@ from .const import (
     DOMAIN,
     EVENT_BABY_TRACKER,
     FEEDING_SIDES,
+    FUTURE_TOLERANCE,
     KIND_DIAPER,
     KIND_FEEDING,
     KIND_SLEEP,
@@ -122,16 +123,17 @@ def _as_utc(when: datetime | None) -> datetime:
     return dt_util.as_utc(when)
 
 
-# A little slack for clocks that are slightly ahead of Home Assistant's.
-FUTURE_TOLERANCE = timedelta(minutes=1)
-
-
 def _past_utc(when: datetime | None) -> datetime:
-    """Return ``when`` in UTC (now if None); it must not be in the future."""
+    """Return ``when`` in UTC (now if None); it must not be in the future.
+
+    A time up to FUTURE_TOLERANCE ahead (a clock slightly ahead of Home
+    Assistant's) is accepted as now, so a following "now" is never before it.
+    """
     at = _as_utc(when)
-    if at > dt_util.utcnow() + FUTURE_TOLERANCE:
+    now = dt_util.utcnow()
+    if at > now + FUTURE_TOLERANCE:
         raise ServiceValidationError(translation_domain=DOMAIN, translation_key="time_in_future")
-    return at
+    return min(at, now)
 
 
 @dataclass(slots=True)
@@ -370,8 +372,10 @@ class BabyTracker:
     ) -> tuple[BabyEvent, bool]:
         """Log a feeding (or a side switch within the current feeding).
 
-        Returns the feeding and whether the entry was merged into the previous
-        feeding because it was within the merge window.
+        Returns the feeding and whether the entry was merged into an existing
+        feeding: the previous one, when within the merge window of its latest side
+        (or backdated inside it), or the next one, when backdated to just before it
+        (the entry is then that feeding's first side).
         """
         if side not in FEEDING_SIDES:
             raise ServiceValidationError(
@@ -390,36 +394,40 @@ class BabyTracker:
         )
         window = timedelta(minutes=self.merge_minutes)
         # Merge when within the window of the latest switch, or when backdated to
-        # a time inside the feeding itself.
+        # a time inside the feeding itself, or to just before the next feeding.
         target: BabyEvent | None = None
         if previous is not None and at - (previous.end or previous.start) < window:
             target = previous
         else:
-            # Backdated to just before a feeding: it is that feeding's first side.
-            following = next((e for e in self.events if e.kind == KIND_FEEDING and e.start > at), None)
+            following = self._next_feeding_after(at)
             if following is not None and following.start - at < window:
                 target = following
         if target is not None:
             merged = target
+            first_side = at < merged.start
             before = (copy.copy(merged.sides), merged.start, merged.end, merged.amount_ml)
 
             def restore() -> None:
-                self._remove(merged.id)
-                merged.sides, merged.start, merged.end, merged.amount_ml = before
-                self._insert(merged)
+                merged.sides, merged.end, merged.amount_ml = before[0], before[2], before[3]
+                if first_side:
+                    # Moving the start changes the feeding's place in the list.
+                    self._remove(merged.id)
+                    merged.start = before[1]
+                    self._insert(merged)
 
-            self._remove(merged.id)
             merged.sides = sorted([*merged.sides, entry], key=lambda s: s["time"])
-            merged.start = min(at, merged.start)
             merged.end = max(at, merged.end or merged.start)
             if amount_ml is not None:
                 merged.amount_ml = (merged.amount_ml or 0) + amount_ml
-            self._insert(merged)
+            if first_side:
+                self._remove(merged.id)
+                merged.start = at
+                self._insert(merged)
             self._set_undo("feeding", restore)
-            self._changed(
-                "feeding",
-                {"side": side, "amount_ml": amount_ml, "same_feeding": True, "time": at.isoformat()},
-            )
+            data = {"side": side, "amount_ml": amount_ml, "same_feeding": True, "time": at.isoformat()}
+            if first_side:
+                data["first_side"] = True
+            self._changed("feeding", data)
             return merged, True
 
         event = BabyEvent(
@@ -436,6 +444,15 @@ class BabyTracker:
             "feeding", {"side": side, "amount_ml": amount_ml, "same_feeding": False, "time": at.isoformat()}
         )
         return event, False
+
+    def _next_feeding_after(self, at: datetime) -> BabyEvent | None:
+        """Return the first feeding that starts after ``at``, if any."""
+        # Usually there is none (a feeding logged now): check the latest one first.
+        latest = next((e for e in reversed(self.events) if e.kind == KIND_FEEDING), None)
+        if latest is None or latest.start <= at:
+            return None
+        index = bisect.bisect_right([e.start for e in self.events], at)
+        return next((e for e in self.events[index:] if e.kind == KIND_FEEDING), None)
 
     @property
     def sleeping(self) -> bool:

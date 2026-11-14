@@ -34,8 +34,11 @@ async def test_duplicate_name(hass: HomeAssistant, mock_entry: MockConfigEntry) 
     mock_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"name": "alex"})
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    # The form is shown again so the name can be corrected.
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"name": "name_taken"}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"name": "Alexa"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
 async def test_two_babies(hass: HomeAssistant) -> None:

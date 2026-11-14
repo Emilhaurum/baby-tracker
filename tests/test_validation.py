@@ -8,9 +8,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import ServiceValidationError
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_capture_events
 
-from custom_components.baby_logger.const import DOMAIN
+from custom_components.baby_logger.const import DOMAIN, EVENT_BABY_TRACKER
+from custom_components.baby_logger.logbook import describe
 
 from .helpers import call, state
 
@@ -74,12 +75,25 @@ async def test_a_little_clock_skew_is_allowed(
     freezer.move_to(NOW)
     await call(hass, "log_diaper", type="wet", time="2026-05-05T15:00:30+02:00")
     assert state(hass, "sensor.alex_diapers_today") == "1"
+    # Stored as now, so it is never in the future.
+    assert entry.runtime_data.events[0].start.isoformat() == "2026-05-05T13:00:00+00:00"
+
+
+async def test_waking_up_right_after_a_skewed_sleep_start(
+    hass: HomeAssistant, entry: MockConfigEntry, freezer: FrozenDateTimeFactory
+) -> None:
+    freezer.move_to(NOW)
+    await call(hass, "start_sleep", time="2026-05-05T15:00:40+02:00")
+    freezer.tick(70)
+    await call(hass, "end_sleep")
+    assert state(hass, "switch.alex_sleeping") == "off"
 
 
 async def test_side_backdated_just_before_a_feeding_merges(
     hass: HomeAssistant, entry: MockConfigEntry, freezer: FrozenDateTimeFactory
 ) -> None:
     freezer.move_to("2026-05-05 10:20:00+02:00")
+    events = async_capture_events(hass, EVENT_BABY_TRACKER)
     await call(hass, "log_feeding", side="right")
     result = await call(hass, "log_feeding", response=True, side="left", time="2026-05-05T10:10:00+02:00")
     assert result["same_feeding"] is True
@@ -87,6 +101,8 @@ async def test_side_backdated_just_before_a_feeding_merges(
     assert result["event"]["start"].startswith("2026-05-05T08:10:00")
     assert state(hass, "sensor.alex_feedings_today") == "1"
     assert state(hass, "sensor.alex_last_feeding_side") == "right"
+    assert events[-1].data["first_side"] is True
+    assert describe(dict(events[-1].data)) == "logged left as the first side of a feeding (10:10)"
 
     # Undo puts the feeding back as it was.
     await call(hass, "undo")

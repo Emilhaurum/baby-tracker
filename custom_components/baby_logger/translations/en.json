@@ -30,7 +30,6 @@
       "name_taken": "Another baby already has this name."
     },
     "abort": {
-      "already_configured": "A baby with this name is already being tracked.",
       "reconfigure_successful": "The baby was updated."
     }
   },

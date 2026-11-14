@@ -36,6 +36,13 @@ class BabyTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
     MINOR_VERSION = 1
 
+    def _name_taken(self, name: str, exclude_entry_id: str | None = None) -> bool:
+        """Return True when another baby already has this name (ignoring case)."""
+        return any(
+            entry.entry_id != exclude_entry_id and entry.title.casefold() == name.casefold()
+            for entry in self._async_current_entries(include_ignore=False)
+        )
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Ask for the baby's name and (optionally) birth date."""
         errors: dict[str, str] = {}
@@ -43,8 +50,8 @@ class BabyTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             name = user_input[CONF_NAME].strip()
             if not name:
                 errors[CONF_NAME] = "name_required"
-            elif any(e.title.casefold() == name.casefold() for e in self._async_current_entries()):
-                return self.async_abort(reason="already_configured")
+            elif self._name_taken(name):
+                errors[CONF_NAME] = "name_taken"
             else:
                 return self.async_create_entry(title=name, data=_entry_data(user_input, name))
         return self.async_show_form(
@@ -61,10 +68,7 @@ class BabyTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             name = user_input[CONF_NAME].strip()
             if not name:
                 errors[CONF_NAME] = "name_required"
-            elif any(
-                e.entry_id != entry.entry_id and e.title.casefold() == name.casefold()
-                for e in self._async_current_entries()
-            ):
+            elif self._name_taken(name, entry.entry_id):
                 errors[CONF_NAME] = "name_taken"
             else:
                 return self.async_update_reload_and_abort(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import time
+from datetime import time, timedelta
 from typing import Final
 
 DOMAIN: Final = "baby_logger"
@@ -35,6 +35,10 @@ DEFAULT_MERGE_MINUTES: Final = 45
 DEFAULT_NIGHT_START: Final = time(22, 0)
 DEFAULT_NIGHT_END: Final = time(9, 0)
 MAX_MERGE_MINUTES: Final = 120
+
+# Times this far in the future are accepted (clocks slightly ahead of Home Assistant's)
+# and treated as now.
+FUTURE_TOLERANCE: Final = timedelta(minutes=1)
 
 # How long the latest action can be undone.
 UNDO_SECONDS: Final = 30
