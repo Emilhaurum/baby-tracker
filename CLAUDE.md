@@ -8,6 +8,9 @@ baby's diapers, feedings, sleep, growth and milestones. It comes with its own da
   `baby-tracker`.
 - Minimum Home Assistant is 2026.11.0 (`hacs.json`). Python is 3.14.
 - The default branch is `main`.
+- **Branches:** use logical, descriptive names that say what the branch is for, e.g.
+  `feature/growth-tracking`, `fix/undo-banner-position` or `docs/readme-actions`. Use one
+  branch per change.
 
 ## Layout
 
@@ -76,7 +79,8 @@ python scripts/set_version.py 1.2.3   # bump the version everywhere
   `this._*Form` (`data-form` / `data-field` inputs) so typing survives a re-render.
 - **Version:** it must match in `manifest.json`, the card and `pyproject.toml` (use
   `scripts/set_version.py`). Add a `CHANGELOG.md` section for each release.
-- **README:** images use absolute `raw.githubusercontent.com` URLs so they also render in
+- **README:** keep it up to date. Every change to features, options, entities or actions
+  updates the README in the same change, along with the changelog. Images use absolute `raw.githubusercontent.com` URLs so they also render in
   HACS. Screenshots are in `docs/`.
 
 ## Releasing
