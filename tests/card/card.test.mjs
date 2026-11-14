@@ -184,6 +184,11 @@ test("phone layout: quick buttons and summary", async () => {
   await card.locator('.qb[data-value="bottle"]').click();
   assert.deepEqual(await partsOf(page), ["buttons", "bottle", "summary"]);
   await card.locator("#bottle-amount").fill("90");
+  // The amount survives an update after the field lost focus (the card is rebuilt).
+  await card.locator("#bottle-amount").blur();
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(20);
+  assert.equal(await card.locator("#bottle-amount").inputValue(), "90");
   await card.locator('[data-action="bottle-log"]').click();
   assert.deepEqual(await calls(page), [
     ["log_diaper", { config_entry_id: "e1", type: "wet" }],

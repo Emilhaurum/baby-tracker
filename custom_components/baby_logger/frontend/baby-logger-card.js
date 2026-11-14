@@ -781,16 +781,63 @@ let defaultEntryId = null;
 // Cards on the page, for keeping the page still when they change (see noteScrollAnchor).
 const CARDS = new Set();
 let scrollAnchor = null;
+// When someone last scrolled: a drag, the wheel, a scroll key, or the page still moving
+// after a flick (iOS keeps scrolling for a few seconds after the finger lifts).
 let lastUserScroll = 0;
+let dragging = false;
+let lastFlick = 0;
+const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "]);
 if (typeof window !== "undefined" && window.addEventListener) {
-  for (const type of ["touchstart", "touchmove", "wheel", "keydown"]) {
-    window.addEventListener(type, () => (lastUserScroll = Date.now()), { passive: true, capture: true });
-  }
+  const options = { passive: true, capture: true };
+  const scrolled = () => (lastUserScroll = Date.now());
+  window.addEventListener("touchstart", () => (dragging = false), options);
+  window.addEventListener(
+    "touchmove",
+    () => {
+      dragging = true;
+      scrolled();
+    },
+    options
+  );
+  window.addEventListener(
+    "touchend",
+    () => {
+      if (dragging) lastFlick = Date.now(); // a tap doesn't scroll
+      dragging = false;
+    },
+    options
+  );
+  window.addEventListener("wheel", scrolled, options);
+  window.addEventListener(
+    "keydown",
+    (ev) => {
+      const target = ev.composedPath()[0];
+      if (SCROLL_KEYS.has(ev.key) && !/^(INPUT|SELECT|TEXTAREA)$/.test(target?.tagName)) scrolled();
+    },
+    options
+  );
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (Date.now() - lastFlick < 3000) scrolled();
+    },
+    options
+  );
 }
 
 /** The part of a card at the top of the screen, or the nearest card below it. */
+/** False for a card in a dialog or other fixed layer (e.g. the editor's preview). */
+function scrollsWithPage(card) {
+  for (let el = card; el && el !== document.documentElement; ) {
+    if (el.tagName === "DIALOG" || getComputedStyle(el).position === "fixed") return false;
+    el = el.parentElement || el.getRootNode().host;
+  }
+  return true;
+}
+
 function pickScrollAnchor() {
   const cards = [...CARDS]
+    .filter(scrollsWithPage)
     .map((card) => ({ card, rect: card.getBoundingClientRect() }))
     .filter(({ rect }) => rect.height > 0)
     .sort((a, b) => a.rect.top - b.rect.top);
@@ -1036,7 +1083,7 @@ class BabyTrackerCard extends HTMLElement {
     // A card Home Assistant builds again (e.g. after reconnecting) shows the last data
     // straight away, before it is given hass, so the page doesn't get shorter.
     if (!this._data) this._fromCache(next.entry_id || defaultEntryId);
-    else if (this._data && this._needsSleeps()) this._ensureSleeps(this._data);
+    else if (this._needsSleeps()) this._ensureSleeps(this._data);
     this._render();
   }
 
@@ -1151,6 +1198,7 @@ class BabyTrackerCard extends HTMLElement {
 
   /** Load the sleeps the timeline and night chart need; again only when the data or range changes. */
   _ensureSleeps(d) {
+    if (!this._hass) return; // shown from the cache before hass: loaded once subscribed
     const now = new Date();
     const parts = this._parts();
     const starts = [];
@@ -1395,17 +1443,27 @@ class BabyTrackerCard extends HTMLElement {
     });
     // Two- and three-column layouts for wider cards, following the card's width.
     if (typeof ResizeObserver === "function") {
-      new ResizeObserver((entries) => this._setWidthClasses(entries[0].contentRect.width)).observe(card);
+      new ResizeObserver((entries) => {
+        const width = entries[0].contentRect.width;
+        // Changing the layout changes the card's height: not inside the observer (that
+        // would loop), and with the page kept still like any other change.
+        requestAnimationFrame(() => this._setWidthClasses(width, true));
+      }).observe(card);
     }
     this._card = card;
     return card;
   }
 
   /** Set the width classes from the card's content width (in px). */
-  _setWidthClasses(width) {
+  _setWidthClasses(width, keepScroll = false) {
     if (!this._card || !(width > 0)) return;
-    this._card.classList.toggle("w420", width >= 420);
-    this._card.classList.toggle("w700", width >= 700);
+    this._widthKnown = true;
+    const w420 = width >= 420;
+    const w700 = width >= 700;
+    if (this._card.classList.contains("w420") === w420 && this._card.classList.contains("w700") === w700) return;
+    if (keepScroll) noteScrollAnchor();
+    this._card.classList.toggle("w420", w420);
+    this._card.classList.toggle("w700", w700);
   }
 
   /** The card's current content width, or 0 before it is laid out. */
@@ -1466,7 +1524,7 @@ class BabyTrackerCard extends HTMLElement {
     this._pendingRender = false;
     const card = this._ensureShell();
     // Right layout from the first frame (the ResizeObserver follows later changes).
-    this._setWidthClasses(this._contentWidth());
+    if (!this._widthKnown) this._setWidthClasses(this._contentWidth());
     // Keep focus and caret in a form field across re-renders.
     const active = this.shadowRoot.activeElement;
     const focusId = active && active.id ? active.id : null;
@@ -1484,7 +1542,8 @@ class BabyTrackerCard extends HTMLElement {
     } else {
       card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
     }
-
+    const amount = this.shadowRoot.querySelector("#bottle-amount");
+    if (amount) amount.value = this._bottleAmount;
     const focused = focusId ? this.shadowRoot.getElementById(focusId) : null;
     if (focused && card.contains(focused)) {
       // preventScroll: restoring focus must not scroll the page to the field.

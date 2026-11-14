@@ -36,42 +36,44 @@ const card = page.locator("baby-logger-card").last();
 await card.locator(".ms-timeline").waitFor({ timeout: 60000 });
 await page.waitForTimeout(2000);
 
-const scrollY = () => page.evaluate(() => (document.scrollingElement || document.documentElement).scrollTop);
+// What you see must stay put: an element on screen keeps its position on screen. (The scroll
+// position itself may change, when content above the screen changes height.)
 let failures = 0;
-const check = async (label, action) => {
-  const before = await scrollY();
+const onScreen = (locator) => locator.first().evaluate((e) => Math.round(e.getBoundingClientRect().top));
+const check = async (label, locator, action) => {
+  const before = await onScreen(locator);
   await action();
   await page.waitForTimeout(1000);
-  const after = await scrollY();
+  const after = await onScreen(locator);
   const ok = Math.abs(after - before) < 5;
   if (!ok) failures++;
-  console.log(`${ok ? "ok  " : "FAIL"} ${engine} ${label}: ${before} -> ${after}`);
+  console.log(`${ok ? "ok  " : "FAIL"} ${engine} ${label}: on screen at ${before} -> ${after}`);
 };
-const tap = async (selector) => {
+// The tapped element stays put, except "Show more", which lists more above itself: there the
+// milestones heading must stay put.
+const tap = async (selector, reference = selector) => {
   const el = card.locator(selector).first();
   await el.evaluate((e) => e.scrollIntoView({ block: "center" }));
   await page.waitForTimeout(400);
-  await check(`tap ${selector}`, async () => {
+  await check(`tap ${selector}`, card.locator(reference), async () => {
     const box = await el.boundingBox();
     await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   });
 };
 
-for (const selector of [
-  '[data-action="growth-list"]',
-  '[data-action="milestones-more"]',
-  ".ms-row",
-  '[data-action="milestones-all"]',
-  '[data-action="milestones-all"]',
-  '[data-action="growth-list"]',
-]) {
+await tap('[data-action="growth-list"]');
+await tap('[data-action="milestones-more"]', ".ms-head");
+for (const selector of [".ms-row", '[data-action="milestones-all"]', '[data-action="milestones-all"]', '[data-action="growth-list"]']) {
   await tap(selector);
 }
 
-// New data while reading the middle of the page (logged elsewhere, e.g. on another phone).
-await page.evaluate(() => window.scrollTo(0, 900));
+// Reading the growth part of the second card while a diaper is logged elsewhere (e.g. on
+// another phone): the first card above gets a new log row and undo banner, and this card's
+// quick buttons an Undo button, all above what you are reading.
+const reading = card.locator(".growth-latest");
+await reading.first().evaluate((e) => e.scrollIntoView({ block: "start" }));
 await page.waitForTimeout(500);
-await check("update", async () => {
+await check("update above the screen", reading, async () => {
   const resp = await fetch(`${base}/api/services/baby_logger/log_diaper`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tokens.access_token}`, "Content-Type": "application/json" },
@@ -80,9 +82,11 @@ await check("update", async () => {
   if (!resp.ok) throw new Error(`log_diaper: ${resp.status}`);
   await page.waitForTimeout(1000);
 });
+// ... and when the Undo goes away again 30 seconds later.
+await check("undo expires above the screen", reading, () => page.waitForTimeout(31000));
 
 // The connection drops and comes back, as when the app returns from the background.
-await check("reconnect", async () => {
+await check("reconnect", reading, async () => {
   await page.evaluate(() => document.querySelector("home-assistant").hass.connection.socket.close());
   await page.waitForTimeout(8000);
 });
