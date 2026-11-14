@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Docs: why Home Assistant 2026.11 is the minimum. Older releases often show *Custom
+  element doesn't exist* instead of the card (#20).
+
 ## 1.1.0
 
 - Card: new `parts` option to choose which parts the card shows and in which order

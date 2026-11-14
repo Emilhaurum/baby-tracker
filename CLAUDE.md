@@ -7,6 +7,14 @@ baby's diapers, feedings, sleep, growth and milestones. It comes with its own da
   already uses that domain. The display name is "Baby Tracker" and the repository is
   `baby-tracker`.
 - Minimum Home Assistant is 2026.11.0 (`hacs.json`). Python is 3.14.
+  - Don't lower the minimum without running the e2e test on a fresh instance several times.
+    The Python code and unit tests also pass on 2026.2 and 2026.3, but on 2026.3 to 2026.10
+    the dashboard usually shows "Custom element doesn't exist: baby-logger-card". The card
+    is registered with `add_extra_js_url`, and those frontends don't pick it up when it
+    loads after the dashboard (#20).
+  - The unit tests run on the Home Assistant version that
+    `pytest-homeassistant-custom-component` pins (see `requirements_test.txt`), which can
+    lag behind the minimum. The e2e job covers the minimum and the latest release.
 - The default branch is `main`.
 - **Branches:** use logical, descriptive names that say what the branch is for, e.g.
   `feature/growth-tracking`, `fix/undo-banner-position` or `docs/readme-actions`. Use one

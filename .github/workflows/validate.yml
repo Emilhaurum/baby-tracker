@@ -82,7 +82,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The minimum version from hacs.json and the latest release.
+        # The minimum version from hacs.json and the latest release. Older releases
+        # often fail to show the card ("Custom element doesn't exist"), see #20.
         ha: ["2026.11.0", ""]
     steps:
       - uses: actions/checkout@v7

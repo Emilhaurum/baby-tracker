@@ -1,2 +1,5 @@
+# pytest-homeassistant-custom-component pins an exact Home Assistant version
+# (0.13.375 = Home Assistant 2026.10.4), which can be older than the minimum in
+# hacs.json. The e2e job in validate.yml tests the minimum and the latest release.
 pytest-homeassistant-custom-component==0.13.375
 ruff==0.17.4
