@@ -7,6 +7,20 @@ baby's diapers, feedings, sleep, growth and milestones. It comes with its own da
   already uses that domain. The display name is "Baby Tracker" and the repository is
   `baby-tracker`.
 - Minimum Home Assistant is 2026.11.0 (`hacs.json`). Python is 3.14.
+  - Don't lower the minimum without running the e2e test several times on fresh instances,
+    with and without a restart after setup. In #20 the dashboard on 2026.3.0, 2026.7.0 and
+    2026.10.0 showed "Custom element doesn't exist: baby-logger-card" in every run, with or
+    without a restart, while 2026.11 always showed the card. The card is registered with
+    `add_extra_js_url`; the exact cause in the older frontends wasn't pinned down.
+  - The unit tests also pass on 2026.3.4 (Python 3.14) and 2026.2.3 (Python 3.13, which
+    this project doesn't otherwise support). Before 2026.3 Home Assistant has no `brands`
+    component, so the `brand/` icon and logo aren't shown.
+  - pytest runs on the Home Assistant version that `pytest-homeassistant-custom-component`
+    pins (see `requirements_test.txt`), which can be older than the minimum. Only the e2e
+    job runs the minimum and the latest release, and it covers the main flows, not every
+    code path.
+  - The e2e matrix in `validate.yml` must list the minimum from `hacs.json`; a CI step
+    checks this.
 - The default branch is `main`.
 - **Branches:** use logical, descriptive names that say what the branch is for, e.g.
   `feature/growth-tracking`, `fix/undo-banner-position` or `docs/readme-actions`. Use one
@@ -85,7 +99,8 @@ python scripts/set_version.py 1.2.3   # bump the version everywhere
 
 ## Releasing
 
-1. Bump the version and merge to `main`.
+1. Bump the version, rename the changelog's *Unreleased* section to the version, and
+   merge to `main`.
 2. Run **Actions → Release → Run workflow** on `main` with the version, e.g. `1.2.3`.
    - The workflow validates everything, then creates the `v1.2.3` tag and a release with
      `baby_logger.zip` (`hacs.json` has `zip_release`).

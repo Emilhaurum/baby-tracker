@@ -65,7 +65,8 @@ Everything is stored locally in Home Assistant.
 2. Extract it into `config/custom_components/baby_logger/`.
 3. Restart Home Assistant.
 
-Requires Home Assistant 2026.11 or newer.
+Requires Home Assistant 2026.11 or newer. On older releases the dashboard usually shows
+*Custom element doesn't exist: baby-logger-card* instead of the bundled card.
 
 ## Setup
 

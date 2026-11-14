@@ -11,6 +11,8 @@
   as its first side (#19).
 - Docs: `parts` lists `growth` and `milestones`; growth and milestone date descriptions
   fixed (#21).
+- Docs: why Home Assistant 2026.11 is the minimum. Older releases usually show *Custom
+  element doesn't exist* instead of the card (#20).
 - Milestones: shown as a timeline (reached ones in order, then the next few) instead of the
   full board; tap one to expand it, or expand all at once (#11).
 - Milestones: **Add** opens a window that suggests similar milestones as you type; built-in
