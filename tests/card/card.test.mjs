@@ -184,6 +184,11 @@ test("phone layout: quick buttons and summary", async () => {
   await card.locator('.qb[data-value="bottle"]').click();
   assert.deepEqual(await partsOf(page), ["buttons", "bottle", "summary"]);
   await card.locator("#bottle-amount").fill("90");
+  // The amount survives an update after the field lost focus (the card is rebuilt).
+  await card.locator("#bottle-amount").blur();
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(20);
+  assert.equal(await card.locator("#bottle-amount").inputValue(), "90");
   await card.locator('[data-action="bottle-log"]').click();
   assert.deepEqual(await calls(page), [
     ["log_diaper", { config_entry_id: "e1", type: "wet" }],
@@ -267,6 +272,23 @@ test("configured buttons", async () => {
   // A wide diaper button lays out like the sleep button.
   assert.equal(await card.locator('.qb.wide[data-value="both"]').count(), 1);
   await context.close();
+});
+
+test("wider cards get two and three columns from their width", async () => {
+  for (const [width, classes, columns] of [
+    [420, [], 1],
+    [520, ["w420"], 2],
+    [760, ["w420", "w700"], 3],
+  ]) {
+    const { page, context } = await mount({ width });
+    const result = await page.evaluate(() => {
+      const card = document.querySelector("baby-logger-card").shadowRoot.querySelector("ha-card");
+      const tiles = card.querySelector(".tiles");
+      return { classes: [...card.classList].sort(), columns: getComputedStyle(tiles).gridTemplateColumns.split(" ").length };
+    });
+    assert.deepEqual(result, { classes, columns }, `width ${width}`);
+    await context.close();
+  }
 });
 
 test("dark theme", async () => {

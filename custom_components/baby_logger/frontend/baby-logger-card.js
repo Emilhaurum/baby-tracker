@@ -778,6 +778,127 @@ const SNAPSHOTS = new Map();
 const SLEEPS = new Map();
 let defaultEntryId = null;
 
+// Cards on the page, for keeping the page still when they change (see noteScrollAnchor).
+const CARDS = new Set();
+let scrollAnchor = null;
+// When someone last scrolled: a drag, the wheel, a scroll key, or the page still moving
+// after a flick (iOS keeps scrolling for a few seconds after the finger lifts).
+let lastUserScroll = 0;
+let dragging = false;
+let lastFlick = 0;
+const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "]);
+if (typeof window !== "undefined" && window.addEventListener) {
+  const options = { passive: true, capture: true };
+  const scrolled = () => (lastUserScroll = Date.now());
+  window.addEventListener("touchstart", () => (dragging = false), options);
+  window.addEventListener(
+    "touchmove",
+    () => {
+      dragging = true;
+      scrolled();
+    },
+    options
+  );
+  window.addEventListener(
+    "touchend",
+    () => {
+      if (dragging) lastFlick = Date.now(); // a tap doesn't scroll
+      dragging = false;
+    },
+    options
+  );
+  window.addEventListener("wheel", scrolled, options);
+  window.addEventListener(
+    "keydown",
+    (ev) => {
+      const target = ev.composedPath()[0];
+      if (SCROLL_KEYS.has(ev.key) && !/^(INPUT|SELECT|TEXTAREA)$/.test(target?.tagName)) scrolled();
+    },
+    options
+  );
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (Date.now() - lastFlick < 3000) scrolled();
+    },
+    options
+  );
+}
+
+/** The part of a card at the top of the screen, or the nearest card below it. */
+/** False for a card in a dialog or other fixed layer (e.g. the editor's preview). */
+function scrollsWithPage(card) {
+  for (let el = card; el && el !== document.documentElement; ) {
+    if (el.tagName === "DIALOG" || getComputedStyle(el).position === "fixed") return false;
+    el = el.parentElement || el.getRootNode().host;
+  }
+  return true;
+}
+
+function pickScrollAnchor() {
+  const cards = [...CARDS]
+    .filter(scrollsWithPage)
+    .map((card) => ({ card, rect: card.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.height > 0)
+    .sort((a, b) => a.rect.top - b.rect.top);
+  for (const { card, rect } of cards) {
+    if (rect.bottom <= 0) continue;
+    if (rect.top < 0 && card._card) {
+      const nodes = [...card._card.children];
+      const node = nodes.find((el) => el.getBoundingClientRect().bottom > 0);
+      if (node && node.dataset.part) {
+        const nth = nodes.filter((el) => el.dataset.part === node.dataset.part).indexOf(node);
+        return { card, part: node.dataset.part, nth, edge: "top" };
+      }
+    }
+    return { card, edge: "top" };
+  }
+  // Every card is above the screen: what you see moves with the bottom of the last one.
+  return cards.length ? { card: cards[cards.length - 1].card, edge: "bottom" } : null;
+}
+
+function scrollAnchorPosition(anchor) {
+  let el = anchor.card;
+  if (anchor.part && anchor.card._card) {
+    const same = [...anchor.card._card.children].filter((node) => node.dataset.part === anchor.part);
+    el = same[anchor.nth] || same[0] || anchor.card;
+  }
+  return el.isConnected ? el.getBoundingClientRect()[anchor.edge] : null;
+}
+
+/**
+ * Call before a card changes its content. Safari doesn't always keep the page still when
+ * content above what you are reading changes height (Chrome does, with scroll anchoring),
+ * so two frames later, after the browser's own adjustment, the page is scrolled by however
+ * much the content at the top of the screen still moved (after any adjustment the browser
+ * made itself). Nothing is done while someone is scrolling.
+ */
+function noteScrollAnchor() {
+  if (scrollAnchor || typeof requestAnimationFrame !== "function") return;
+  const anchor = pickScrollAnchor();
+  const top = anchor ? scrollAnchorPosition(anchor) : null;
+  if (top === null) return;
+  scrollAnchor = { ...anchor, top, scrollY: window.scrollY };
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const noted = scrollAnchor;
+      scrollAnchor = null;
+      // Never fight someone who is scrolling (a flick keeps scrolling after the finger lifts).
+      if (Date.now() - lastUserScroll < 1000) return;
+      const now = scrollAnchorPosition(noted);
+      if (now === null) return;
+      // How far the content moved in the page, and how much of that is still visible on
+      // screen (the browser may have scrolled to make up for some of it). A scroll without
+      // the content moving (e.g. Home Assistant restoring a position) is left alone, and the
+      // correction is never more than the content moved, or the other way.
+      const moved = now + window.scrollY - (noted.top + noted.scrollY);
+      const visible = now - noted.top;
+      if (Math.abs(moved) < 1 || Math.abs(visible) < 1 || Math.sign(visible) !== Math.sign(moved)) return;
+      window.scrollBy(0, Math.abs(visible) > Math.abs(moved) ? moved : visible);
+    })
+  );
+}
+
 /**
  * Points of a growth chart, oldest first. x is the age in months when the birth
  * date is known, otherwise days since 1970; y is in the display units.
@@ -959,7 +1080,10 @@ class BabyTrackerCard extends HTMLElement {
       (this._config.entry_id !== next.entry_id || this._config.days !== next.days || needs(this._config) !== needs(next));
     this._config = next;
     if (changed) this._resubscribe();
-    else if (this._data && this._needsSleeps()) this._ensureSleeps(this._data);
+    // A card Home Assistant builds again (e.g. after reconnecting) shows the last data
+    // straight away, before it is given hass, so the page doesn't get shorter.
+    if (!this._data) this._fromCache(next.entry_id || defaultEntryId);
+    else if (this._needsSleeps()) this._ensureSleeps(this._data);
     this._render();
   }
 
@@ -974,12 +1098,14 @@ class BabyTrackerCard extends HTMLElement {
   }
 
   connectedCallback() {
+    CARDS.add(this);
     this._timer = window.setInterval(() => this._tick(), 15000);
     this._retryAt = 0;
     if (this._hass && !this._unsub) this._subscribe();
   }
 
   disconnectedCallback() {
+    CARDS.delete(this);
     window.clearInterval(this._timer);
     this._unsubscribe();
   }
@@ -1072,6 +1198,7 @@ class BabyTrackerCard extends HTMLElement {
 
   /** Load the sleeps the timeline and night chart need; again only when the data or range changes. */
   _ensureSleeps(d) {
+    if (!this._hass) return; // shown from the cache before hass: loaded once subscribed
     const now = new Date();
     const parts = this._parts();
     const starts = [];
@@ -1314,8 +1441,37 @@ class BabyTrackerCard extends HTMLElement {
     dialog.addEventListener("close", () => {
       this._addForm = null;
     });
+    // Two- and three-column layouts for wider cards, following the card's width.
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver((entries) => {
+        const width = entries[0].contentRect.width;
+        // Changing the layout changes the card's height: not inside the observer (that
+        // would loop), and with the page kept still like any other change.
+        requestAnimationFrame(() => this._setWidthClasses(width, true));
+      }).observe(card);
+    }
     this._card = card;
     return card;
+  }
+
+  /** Set the width classes from the card's content width (in px). */
+  _setWidthClasses(width, keepScroll = false) {
+    if (!this._card || !(width > 0)) return;
+    this._widthKnown = true;
+    const w420 = width >= 420;
+    const w700 = width >= 700;
+    if (this._card.classList.contains("w420") === w420 && this._card.classList.contains("w700") === w700) return;
+    if (keepScroll) noteScrollAnchor();
+    this._card.classList.toggle("w420", w420);
+    this._card.classList.toggle("w700", w700);
+  }
+
+  /** The card's current content width, or 0 before it is laid out. */
+  _contentWidth() {
+    const card = this._card;
+    if (!card || !card.isConnected || !card.clientWidth) return 0;
+    const style = getComputedStyle(card);
+    return card.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   }
 
   /** Whether a form field in the card has focus (someone is typing or picking a date). */
@@ -1341,6 +1497,7 @@ class BabyTrackerCard extends HTMLElement {
       return;
     }
     const card = this._card;
+    noteScrollAnchor();
     const parts = this._renderData(this._data);
     parts.forEach(([name, html], index) => {
       if (name === keep) return;
@@ -1366,6 +1523,8 @@ class BabyTrackerCard extends HTMLElement {
     if (!this.shadowRoot || !this._config) return;
     this._pendingRender = false;
     const card = this._ensureShell();
+    // Right layout from the first frame (the ResizeObserver follows later changes).
+    if (!this._widthKnown) this._setWidthClasses(this._contentWidth());
     // Keep focus and caret in a form field across re-renders.
     const active = this.shadowRoot.activeElement;
     const focusId = active && active.id ? active.id : null;
@@ -1375,6 +1534,7 @@ class BabyTrackerCard extends HTMLElement {
     } catch (_err) {
       // not every input type has a selection
     }
+    noteScrollAnchor();
     if (this._error) {
       card.innerHTML = `<div class="message error">${esc(this._error)}</div>`;
     } else if (!this._data) {
@@ -1955,7 +2115,7 @@ class BabyTrackerCard extends HTMLElement {
 
 const STYLE = `
   :host { display: block; }
-  ha-card { padding: 16px; overflow: hidden; container: bt-card / inline-size;
+  ha-card { padding: 16px; overflow: hidden;
     --bt-sleep: ${SLEEP_COLORS.night}; --bt-awake: color-mix(in srgb, ${SLEEP_COLORS.day} 55%, var(--card-background-color)); }
   ha-icon { --mdc-icon-size: 18px; }
   /* Parts can come in any order: symmetric margins collapse between neighbours. */
@@ -2015,14 +2175,12 @@ const STYLE = `
   .summary .label { display: flex; align-items: center; gap: 6px; color: var(--secondary-text-color); font-size: 0.9em; }
   .summary .value { font-size: 1.4em; font-weight: 500; }
   .charts { display: grid; grid-template-columns: 1fr; gap: 12px; }
-  @container bt-card (min-width: 420px) {
-    .tiles, .charts { grid-template-columns: 1fr 1fr; }
-    .tile.sleep, .chart.wide { grid-column: 1 / -1; }
-  }
-  @container bt-card (min-width: 700px) {
-    .tiles, .charts { grid-template-columns: repeat(3, 1fr); }
-    .tile.sleep, .chart.wide { grid-column: auto; }
-  }
+  /* Wider cards (w420 / w700 are set from the card's width; a CSS container query made
+     iOS scroll the page whenever the card's content changed). */
+  ha-card.w420 .tiles, ha-card.w420 .charts { grid-template-columns: 1fr 1fr; }
+  ha-card.w420 .tile.sleep, ha-card.w420 .chart.wide { grid-column: 1 / -1; }
+  ha-card.w700 .tiles, ha-card.w700 .charts { grid-template-columns: repeat(3, 1fr); }
+  ha-card.w700 .tile.sleep, ha-card.w700 .chart.wide { grid-column: auto; }
   .chart { border-radius: 12px; padding: 8px 12px; background: var(--secondary-background-color); }
   .chart-title { font-size: 0.9em; color: var(--secondary-text-color); }
   .chart svg { width: 100%; height: auto; max-height: 170px; display: block; }

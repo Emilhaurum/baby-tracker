@@ -60,8 +60,13 @@ Tests:
   `TZ=Europe/Copenhagen` so DST is covered).
 - `tests/card/`: browser tests of the card and editor in Playwright. They use a mocked
   `hass` from `harness.html`.
-- `tests/e2e/`: the onboarding script `setup_instance.py` and the browser test `card.mjs`,
-  both run against a real Home Assistant.
+- `tests/e2e/`: the onboarding script `setup_instance.py`, the browser test `card.mjs` and
+  `scroll.mjs`, all run against a real Home Assistant. `scroll.mjs` checks on an emulated
+  phone, in Chromium and in WebKit (iOS), that the page doesn't jump when the card changes;
+  `validate.sh --e2e` skips WebKit if it isn't installed (`npx playwright install --with-deps
+  webkit`).
+- Don't use CSS container queries in the card: Safari scrolls the page whenever the content
+  of a container changes. Use the `w420` / `w700` classes on `ha-card` instead.
 
 ## Commands
 
