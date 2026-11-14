@@ -93,6 +93,14 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Check the matrix uses the minimum from hacs.json
+        if: matrix.ha != ''
+        run: |
+          minimum="$(python -c "import json; print(json.load(open('hacs.json'))['homeassistant'])")"
+          if [ "$minimum" != "${{ matrix.ha }}" ]; then
+            echo "hacs.json requires $minimum but the e2e matrix tests ${{ matrix.ha }}" >&2
+            exit 1
+          fi
       - name: Install Home Assistant
         run: |
           # Home Assistant refuses to start outside a virtual environment.
