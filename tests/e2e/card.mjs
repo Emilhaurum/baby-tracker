@@ -125,10 +125,19 @@ const latest = await growthCard.locator(".growth-latest .value").allTextContents
 if (latest.join("|") !== "5.90 kg|58.4 cm") fail(`latest growth: ${latest.join("|")}`);
 if ((await growthCard.locator(".qb").count()) < 7) fail("quick buttons missing");
 if ((await growthCard.locator(".ms.done").count()) !== 2) fail("expected 2 reached milestones");
-await growthCard.locator('.ms[data-value="crawls"]').click();
-await growthCard.locator('[data-action="milestone-save"]').click();
+// Only the next few upcoming milestones are listed until "Show more".
+if ((await growthCard.locator('.ms-row[data-value="crawls"]').count()) !== 0) fail("all upcoming milestones listed");
+await growthCard.locator('[data-action="milestones-more"]').click();
+await growthCard.locator('.ms-row[data-value="crawls"]').click();
+await growthCard.locator('.ms[data-key="crawls"] [data-action="milestone-save"]').click();
 await page.waitForTimeout(1000);
 if ((await growthCard.locator(".ms.done").count()) !== 3) fail("marking a milestone as reached did not stick");
+// The add window finds a built-in milestone by its tags and marks it as reached.
+await growthCard.locator('[data-action="milestone-add-open"]').click();
+await growthCard.locator("#ms-add-query").fill("walking");
+await growthCard.locator('.suggestion[data-value="first_steps"]').click();
+await page.waitForTimeout(1000);
+if ((await growthCard.locator('.ms.done[data-key="first_steps"]').count()) !== 1) fail("picking a suggestion did not reach the milestone");
 await growthCard.locator('[data-action="growth-open"]').click();
 await growthCard.locator("#growth-weight").fill("6.2");
 await growthCard.locator('[data-action="growth-save"]').click();

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Milestones: shown as a timeline (reached ones in order, then the next few) instead of the
+  full board; tap one to expand it, or expand all at once (#11).
+- Milestones: **Add** opens a window that suggests similar milestones as you type; built-in
+  milestones have tags (e.g. "walking", "teething"), and accents and small typos are ignored
+  (#12).
+- Milestones: no more "x of y reached" count (#13).
+- Growth: the measurement list can be collapsed; new `growth_list` option (#14).
+- Card: a dashboard that Home Assistant builds again (e.g. when the app resumes) no longer
+  jumps back to the top; the card shows its last data straight away (#15).
+- Card: updates no longer scroll the page back to a focused form field or close an open date
+  picker (#17).
+
 ## 1.1.0
 
 - Card: new `parts` option to choose which parts the card shows and in which order

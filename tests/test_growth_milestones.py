@@ -175,6 +175,7 @@ async def test_snapshot(hass: HomeAssistant, entry: MockConfigEntry, hass_ws_cli
         "category": "movement",
         "months": 12,
         "cdc": False,
+        "tags": ["walk", "walking", "steps", "step", "toddle"],
         "custom": False,
         "date": None,
         "note": None,
@@ -273,3 +274,8 @@ async def test_catalogue_is_consistent() -> None:
     keys = [m.key for m in MILESTONES]
     assert len(keys) == len(set(keys))
     assert all(m.months is None or 1 <= m.months <= 36 for m in MILESTONES)
+    # Every built-in milestone has search tags: lower case, no duplicates.
+    for m in MILESTONES:
+        assert m.tags, m.key
+        assert all(t == t.strip().lower() and t for t in m.tags), m.key
+        assert len(m.tags) == len(set(m.tags)), m.key

@@ -718,6 +718,7 @@ class BabyTracker:
                 "category": m.category,
                 "months": m.months,
                 "cdc": m.cdc,
+                "tags": list(m.tags),
                 "custom": False,
                 **state(m.key),
             }
@@ -730,6 +731,7 @@ class BabyTracker:
                 "category": "custom",
                 "months": None,
                 "cdc": False,
+                "tags": [],
                 "custom": True,
                 **state(c["id"]),
             }
