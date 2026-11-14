@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
 - Card: the page no longer jumps on iPhone and iPad (Safari, including the Home Assistant
   app) when the card changes: on expanding or collapsing, every minute's update and after

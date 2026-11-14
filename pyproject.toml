@@ -1,6 +1,6 @@
 [project]
 name = "baby-tracker"
-version = "1.2.0"
+version = "1.2.1"
 description = "Home Assistant custom integration for tracking diapers, feedings and sleep."
 requires-python = ">=3.14"
 license = "MIT"
