@@ -29,6 +29,8 @@ def describe(data: dict[str, Any]) -> str:
     if action == "feeding":
         side = SIDES.get(data.get("side", ""), data.get("side", ""))
         amount = f", {data['amount_ml']:g} ml" if data.get("amount_ml") else ""
+        if data.get("first_side"):
+            return f"logged {side} as the first side of a feeding{amount} ({at})"
         if data.get("same_feeding"):
             return f"switched to {side} in the same feeding{amount} ({at})"
         return f"started a feeding: {side}{amount} ({at})"

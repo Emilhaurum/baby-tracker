@@ -21,7 +21,8 @@ Everything is stored locally in Home Assistant.
 - **Diapers**: wet, dirty or both, with a count for today.
 - **Feedings**: left, right or bottle (with an optional amount in ml). Entries logged
   within the *same feeding window* (45 minutes by default) of the previous one count as
-  a side switch in the same feeding, so a feeding can be *Left → Right → Left*. The
+  a side switch in the same feeding, so a feeding can be *Left → Right → Left*. A side
+  logged afterwards for a time just before a feeding becomes that feeding's first side. The
   next breast to start with is suggested.
 - **Sleep**: tap when the baby falls asleep and when they wake up. Sleeps are kept in an
   editable calendar, so you can add, move or delete them afterwards.
@@ -85,7 +86,7 @@ type: custom:baby-logger-card
 | Option | Default | Description |
 | --- | --- | --- |
 | `entry_id` | first baby | Which baby to show. The visual editor lets you pick by name. |
-| `parts` | see below | The parts to show, in order: `header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`. When set, the `show_*` options are ignored. |
+| `parts` | see below | The parts to show, in order: `header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`, `growth`, `milestones`. When set, the `show_*` options are ignored. |
 | `buttons` | all, see below | The quick buttons of the `buttons` part, in order. |
 | `buttons_columns` | `3` | Quick buttons per row. |
 | `units` | `metric` | Units for growth: `metric` (kg, cm) or `imperial` (lb + oz, in). |
@@ -270,7 +271,8 @@ assistant ("press Feed left").
 ## Actions
 
 All actions take the baby as `config_entry_id` (pick it in the UI). `time` is optional
-and defaults to now, so you can log things after the fact.
+and defaults to now, so you can log things after the fact. Times (`time`, `start`, `end`)
+can't be in the future.
 
 | Action | Fields |
 | --- | --- |
