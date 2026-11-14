@@ -5,7 +5,8 @@
 - Actions reject times in the future (`time`, `start`, `end`, and moving a sleep in the
   calendar), so a mistyped time can no longer count as today, hide from the card's log or
   leave the baby stuck sleeping (#16).
-- Reconfigure no longer lets two babies have the same name (#18).
+- Two babies can no longer get the same name through Reconfigure; adding or renaming a baby
+  to a taken name shows an error on the form so it can be corrected (#18).
 - A side logged afterwards for a time just before a feeding is merged into that feeding
   as its first side (#19).
 - Docs: `parts` lists `growth` and `milestones`; growth and milestone date descriptions
