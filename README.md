@@ -196,7 +196,7 @@ from the first weeks to several years. Tap ✕ next to a measurement to delete i
 
 **Milestones**: tap a milestone to mark it as reached (today, or pick the date), and tap it
 again to change the date or mark it as not reached. Under the board you can add your own,
-such as "First swim". Not-yet-reached milestones show a typical age: *Most by 9 months*
+such as "First swim" (clear its date to add it as not reached yet). Not-yet-reached milestones show a typical age: *Most by 9 months*
 is the age by which most children (75%) reach it according to the
 [CDC milestone checklists](https://www.cdc.gov/act-early/milestones/index.html);
 *Around 6 months* is a typical age for common "firsts" such as the first tooth. Every child
@@ -288,8 +288,8 @@ and defaults to now, so you can log things after the fact.
 | `baby_logger.add_milestone` | `name`, `date` (leave out to add it as not reached yet), `note` |
 | `baby_logger.delete_milestone` | `milestone` (only ones you added) |
 
-`date` defaults to today. The built-in milestone keys are listed in
-[`milestones.py`](custom_components/baby_logger/milestones.py).
+`date` defaults to today and can't be in the future or before the baby's birth date. The
+built-in milestone keys are listed in [`milestones.py`](custom_components/baby_logger/milestones.py).
 
 The logging actions return the created entry. For example:
 
