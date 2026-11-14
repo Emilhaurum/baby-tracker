@@ -61,6 +61,7 @@ test("search: case, accents and small typos", () => {
 
 test("search: every word has to match, and reached ones go last", () => {
   assert.deepEqual(keys("first swim"), ["custom_1"]);
+  assert.deepEqual(matchMilestones("første", [m("c", "Første tur")]).map((x) => x.key), ["c"]);
   assert.deepEqual(keys("first trip to the beach"), []);
   assert.deepEqual(keys(""), []);
   assert.deepEqual(keys("the"), []);
@@ -71,6 +72,10 @@ test("search: every word has to match, and reached ones go last", () => {
 
 test("text helpers", () => {
   assert.equal(normalizeText("  Peek-a-Boo! Ünïcode "), "peek a boo unicode");
+  // Letters without an accent to drop are kept, in any script.
+  assert.equal(normalizeText("Første tur"), "første tur");
+  // (Accents are folded the same way in the query, so й → и still matches.)
+  assert.equal(normalizeText("Первый шаг"), "первыи шаг");
   assert.equal(editDistance("crawl", "crwal"), 1);
   assert.equal(editDistance("walk", "talk"), 1);
   assert.equal(editDistance("", "abc"), 3);

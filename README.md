@@ -295,7 +295,7 @@ and defaults to now, so you can log things after the fact.
 | `baby_logger.delete_event` | `event_id` |
 | `baby_logger.log_growth` | `weight`, `length` (at least one), `units` (`metric`: kg / cm, default; `imperial`: lb / in), `date`, `note` |
 | `baby_logger.delete_growth` | `event_id` (the measurement's `id`) |
-| `baby_logger.set_milestone` | `milestone` (e.g. `first_steps`, or the id of one you added), `date`, `note` |
+| `baby_logger.set_milestone` | `milestone` (e.g. `first_steps`, or the id of one you added), `date`, `note` (left out: the current note is kept; empty: removed) |
 | `baby_logger.clear_milestone` | `milestone` |
 | `baby_logger.add_milestone` | `name`, `date` (leave out to add it as not reached yet), `note` |
 | `baby_logger.delete_milestone` | `milestone` (only ones you added) |

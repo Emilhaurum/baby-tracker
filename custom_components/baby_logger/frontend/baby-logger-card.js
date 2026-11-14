@@ -711,7 +711,7 @@ export function normalizeText(text) {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
 
@@ -1050,6 +1050,8 @@ class BabyTrackerCard extends HTMLElement {
     const data = entryId ? SNAPSHOTS.get(this._cacheKey(entryId)) : null;
     if (!data) return false;
     this._data = data;
+    // The buttons work straight away, before the subscription is ready.
+    this._entryId = data.entry_id;
     const sleeps = SLEEPS.get(entryId);
     if (sleeps && !this._sleeps) {
       this._sleeps = sleeps.sleeps;
@@ -1119,7 +1121,8 @@ class BabyTrackerCard extends HTMLElement {
 
   async _call(service, data = {}) {
     try {
-      await this._hass.callService(DOMAIN, service, { config_entry_id: this._entryId, ...data });
+      const entryId = this._entryId || this._data?.entry_id;
+      await this._hass.callService(DOMAIN, service, { config_entry_id: entryId, ...data });
       return true;
     } catch (err) {
       this.dispatchEvent(
@@ -1212,14 +1215,19 @@ class BabyTrackerCard extends HTMLElement {
           this._msAllOpen = false;
           this._msOpen = new Set(this._shownMilestones().map((m) => m.key));
         }
-        if (open) this._msOpen.delete(value);
-        else this._msOpen.add(value);
+        if (open) {
+          this._msOpen.delete(value);
+          delete this._milestoneForm[`date-${value}`];
+        } else {
+          this._msOpen.add(value);
+        }
         this._render();
         break;
       }
       case "milestones-all":
         this._msAllOpen = !this._msAllOpen;
         this._msOpen = new Set();
+        this._milestoneForm = {};
         this._render();
         break;
       case "milestones-more":
@@ -1318,15 +1326,40 @@ class BabyTrackerCard extends HTMLElement {
 
   /**
    * Re-render for an update nobody asked for (new data, sleeps loaded). Rebuilding
-   * the card while a field has focus would close its date picker and could scroll the
-   * page, so it waits until the field loses focus.
+   * the part with a focused field would close its date picker and could scroll the
+   * page, so every other part is updated and that one waits until the field loses focus.
    */
   _backgroundRender() {
-    if (this._fieldFocused()) {
+    const active = this._fieldFocused() ? this.shadowRoot.activeElement : null;
+    if (!active) {
+      this._render();
+      return;
+    }
+    const keep = active.closest("[data-part]")?.dataset.part;
+    if (!keep || !this._data || this._error) {
       this._pendingRender = true;
       return;
     }
-    this._render();
+    const card = this._card;
+    const parts = this._renderData(this._data);
+    parts.forEach(([name, html], index) => {
+      if (name === keep) return;
+      const old = [...card.children].filter((el) => el.dataset.part === name);
+      const nodes = this._partNodes(name, html);
+      if (old.length) {
+        old[0].before(nodes);
+        old.forEach((el) => el.remove());
+        return;
+      }
+      // The part had nothing to show before: insert it before the next part shown.
+      const later = new Set(parts.slice(index + 1).map(([n]) => n));
+      const anchor = [...card.children].find((el) => later.has(el.dataset.part));
+      if (anchor) anchor.before(nodes);
+      else card.append(nodes);
+    });
+    const amount = this.shadowRoot.querySelector("#bottle-amount");
+    if (amount && amount !== active) amount.value = this._bottleAmount;
+    this._pendingRender = true;
   }
 
   _render() {
@@ -1342,15 +1375,13 @@ class BabyTrackerCard extends HTMLElement {
     } catch (_err) {
       // not every input type has a selection
     }
-    let body;
     if (this._error) {
-      body = `<div class="message error">${esc(this._error)}</div>`;
+      card.innerHTML = `<div class="message error">${esc(this._error)}</div>`;
     } else if (!this._data) {
-      body = `<div class="message loading">Loading…</div>`;
+      card.innerHTML = `<div class="message">Loading…</div>`;
     } else {
-      body = this._renderData(this._data);
+      card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
     }
-    card.innerHTML = body;
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount) amount.value = this._bottleAmount;
     const focused = focusId ? this.shadowRoot.getElementById(focusId) : null;
@@ -1431,9 +1462,15 @@ class BabyTrackerCard extends HTMLElement {
       growth: () => this._growthHtml(d),
       milestones: () => this._milestonesHtml(d),
     };
-    return this._parts()
-      .map((part) => parts[part]())
-      .join("");
+    return this._parts().map((part) => [part, parts[part]()]);
+  }
+
+  /** The nodes of one part, each marked with data-part so it can be replaced on its own. */
+  _partNodes(name, html) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    for (const el of template.content.children) el.dataset.part = name;
+    return template.content;
   }
 
   _bottleForm(source) {
@@ -1657,6 +1694,13 @@ class BabyTrackerCard extends HTMLElement {
   }
 
   _milestonesHtml(d) {
+    if (this._revealName) {
+      const added = (d.milestones || []).find((m) => m.custom && normalizeText(m.name) === this._revealName);
+      if (added) {
+        this._revealName = null;
+        this._revealMilestone(added.key);
+      }
+    }
     const { reached, upcoming } = milestoneTimeline(d.milestones);
     const form = this._milestoneForm;
     const age = (iso) => (d.birth_date ? formatAge(d.birth_date, iso) : "");
@@ -1778,7 +1822,8 @@ class BabyTrackerCard extends HTMLElement {
             <span class="ms-name">${esc(m.name)}</span><span class="ms-when">${esc(status)}</span></button></li>`;
       })
       .join("");
-    const exact = matches.some((m) => normalizeText(m.name) === normalizeText(query));
+    const wanted = normalizeText(query);
+    const exact = Boolean(wanted) && (this._data?.milestones || []).some((m) => normalizeText(m.name) === wanted);
     const add = dialog.querySelector('[data-action="add-new"]');
     add.disabled = !query || exact;
     add.textContent = query ? `Add “${query.length > 30 ? `${query.slice(0, 30)}…` : query}” as new` : "Add as new";
@@ -1805,14 +1850,21 @@ class BabyTrackerCard extends HTMLElement {
     else if (action === "add-new") this._addAsNew();
     else if (action === "add-pick") {
       const { date, note } = this._addForm;
-      const data = { milestone: value, date: date || todayIso() };
+      const picked = (this._data?.milestones || []).find((m) => m.key === value);
+      const show = () => {
+        this._closeAddDialog();
+        this._revealMilestone(value);
+        this._render();
+      };
+      // Already reached, or added as not reached yet: just show it (its date can be changed there).
+      if (!picked || picked.date || !date) {
+        show();
+        return;
+      }
+      const data = { milestone: value, date };
       if (note.trim()) data.note = note.trim();
       this._call("set_milestone", data).then((ok) => {
-        if (ok) {
-          this._closeAddDialog();
-          this._msOpen.add(value);
-          this._render();
-        }
+        if (ok) show();
       });
     }
   }
@@ -1828,9 +1880,19 @@ class BabyTrackerCard extends HTMLElement {
     this._call("add_milestone", data).then((ok) => {
       if (ok) {
         this._closeAddDialog();
+        // Show it once the new snapshot arrives, even if it would be behind "Show more".
+        this._revealName = normalizeText(name);
         this._render();
       }
     });
+  }
+
+  /** Expand a milestone and make sure it is listed (not hidden behind "Show more"). */
+  _revealMilestone(key) {
+    this._msOpen.add(key);
+    const { upcoming } = milestoneTimeline(this._data?.milestones);
+    const index = upcoming.findIndex((m) => m.key === key);
+    if (index >= UPCOMING_SHOWN) this._msShowAll = true;
   }
 
   _summaryHtml(d) {
@@ -2004,7 +2066,6 @@ const STYLE = `
   .form .actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .form-toggle { margin-top: 12px; }
   .count { font-weight: 400; color: var(--secondary-text-color); font-size: 0.85em; margin-left: 6px; }
-  .message.loading { min-height: 240px; }
   button.collapse { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 12px; padding: 6px 0; background: none;
     border: none; border-top: 1px solid var(--divider-color); color: var(--primary-text-color); font-weight: 500; text-align: left; }
   button.collapse ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }

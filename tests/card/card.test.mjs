@@ -470,9 +470,15 @@ test("milestone timeline", async () => {
   assert.equal(await card.locator("#ms-date-crawls").inputValue(), "2026-05-01");
   await card.locator('.ms[data-key="crawls"] [data-action="milestone-save"]').click();
   assert.deepEqual((await calls(page)).at(-1), ["set_milestone", { config_entry_id: "e1", milestone: "crawls", date: "2026-05-01" }]);
-  // Tap again to collapse.
+  // Tap again to collapse; an unsaved date is forgotten.
   await card.locator('.ms-row[data-value="crawls"]').click();
   assert.equal(await card.locator(".ms-details").count(), 0);
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
+  await card.locator("#ms-date-first_tooth").fill("2026-04-01");
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
+  assert.equal(await card.locator("#ms-date-first_tooth").inputValue(), "2026-05-05");
+  await card.locator('.ms-row[data-value="first_tooth"]').click();
 
   // Expand all, then collapse all.
   await card.locator('[data-action="milestones-all"]').click();
@@ -552,6 +558,22 @@ test("add milestone window suggests similar milestones", async () => {
   assert.deepEqual((await calls(page)).at(-1), ["add_milestone", { config_entry_id: "e1", name: "First trip to the beach" }]);
   assert.equal(await dialog.evaluate((d) => d.open), false);
 
+  // A new milestone not reached yet is shown expanded once it arrives, not hidden behind "Show more".
+  const withNew = snapshot();
+  withNew.milestones = [...withNew.milestones, { key: "custom_new", name: "First trip to the beach", category: "custom", months: null, cdc: false, tags: [], custom: true, date: null, note: null }];
+  await page.evaluate((snap) => window.hass.push(snap), withNew);
+  await page.waitForTimeout(20);
+  assert.equal(await card.locator('.ms[data-key="custom_new"] .ms-details').count(), 1);
+
+  // Picking one already reached just shows it; its date isn't changed.
+  const before = (await calls(page)).length;
+  await card.locator('[data-action="milestone-add-open"]').click();
+  await dialog.locator("#ms-add-query").fill("smile");
+  await dialog.locator('.suggestion[data-value="first_smile"]').click();
+  assert.equal((await calls(page)).length, before);
+  assert.equal(await dialog.evaluate((d) => d.open), false);
+  assert.equal(await card.locator('.ms[data-key="first_smile"] .ms-details').count(), 1);
+
   // An exact name match can't be added again; Cancel closes.
   await card.locator('[data-action="milestone-add-open"]').click();
   await dialog.locator("#ms-add-query").fill("first swim");
@@ -571,11 +593,15 @@ test("updates don't scroll the page to a focused field", async () => {
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   const before = await page.evaluate(() => window.scrollY);
   assert.ok(before > 300, `scrolled to ${before}`);
-  await page.evaluate((snap) => window.hass.push({ ...snap, revision: 42 }), snapshot());
+  const today = snapshot().today;
+  await page.evaluate((snap) => window.hass.push(snap), snapshot({ revision: 42, today: { ...today, diapers: { ...today.diapers, total: 9 } } }));
   await page.waitForTimeout(50);
   assert.equal(await page.evaluate(() => window.scrollY), before);
-  // The field keeps its value and focus; the update is shown once it loses focus.
+  // The field keeps its value and focus ...
   assert.equal(await card.locator("#growth-weight").inputValue(), "6.5");
+  assert.equal(await page.evaluate(() => document.querySelector("baby-logger-card").shadowRoot.activeElement?.id), "growth-weight");
+  // ... while the other parts are updated straight away.
+  assert.equal(await card.locator(".chip").first().textContent(), "9 diapers");
   await context.close();
 });
 
@@ -591,10 +617,13 @@ test("a rebuilt card keeps the page where it was", async () => {
     card.setConfig({});
     old.replaceWith(card);
     card.hass = window.hass;
-    return { height: card.getBoundingClientRect().height, scrollY: window.scrollY };
+    // Tapped before the subscription is ready: still sent for the right baby.
+    card.shadowRoot.querySelector('[data-action="diaper"][data-value="wet"]').click();
+    return { height: card.getBoundingClientRect().height, scrollY: window.scrollY, entry: window.hass.calls.at(-1)?.data.config_entry_id };
   });
   assert.ok(first.height > 1500, `first render height ${first.height}`);
   assert.equal(first.scrollY, before);
+  assert.equal(first.entry, "e1");
   await page.waitForTimeout(100);
   assert.equal(await page.evaluate(() => window.scrollY), before);
   await context.close();

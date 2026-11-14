@@ -104,6 +104,16 @@ async def test_milestones(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     await call(hass, "undo")
     assert tracker.milestones_done["first_smile"]["date"].isoformat() == "2026-02-10"
 
+    # Changing only the date keeps the note; an empty note removes it.
+    await call(hass, "set_milestone", milestone="first_smile", date="2026-02-12", note="At grandma's")
+    await call(hass, "set_milestone", milestone="first_smile", date="2026-02-11")
+    assert tracker.milestones_done["first_smile"] == {
+        "date": tracker.milestones_done["first_smile"]["date"],
+        "note": "At grandma's",
+    }
+    await call(hass, "set_milestone", milestone="first_smile", date="2026-02-11", note="")
+    assert tracker.milestones_done["first_smile"]["note"] is None
+
     await call(hass, "clear_milestone", milestone="first_smile")
     assert "first_smile" not in tracker.milestones_done
     await call(hass, "undo")
