@@ -26,7 +26,8 @@
       }
     },
     "error": {
-      "name_required": "Please enter a name."
+      "name_required": "Please enter a name.",
+      "name_taken": "Another baby already has this name."
     },
     "abort": {
       "already_configured": "A baby with this name is already being tracked.",
@@ -317,6 +318,9 @@
     "date_in_future": {
       "message": "The date can't be in the future."
     },
+    "time_in_future": {
+      "message": "The time can't be in the future."
+    },
     "date_before_birth": {
       "message": "The date can't be before the birth date ({birth_date})."
     }
@@ -476,7 +480,7 @@
         },
         "date": {
           "name": "Date",
-          "description": "When it was measured or reached. Defaults to today."
+          "description": "When it was measured. Defaults to today."
         },
         "note": {
           "name": "Note",
@@ -512,7 +516,7 @@
         },
         "date": {
           "name": "Date",
-          "description": "When it was measured or reached. Defaults to today."
+          "description": "When it was reached. Defaults to today."
         },
         "note": {
           "name": "Note",

@@ -61,6 +61,11 @@ class BabyTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             name = user_input[CONF_NAME].strip()
             if not name:
                 errors[CONF_NAME] = "name_required"
+            elif any(
+                e.entry_id != entry.entry_id and e.title.casefold() == name.casefold()
+                for e in self._async_current_entries()
+            ):
+                errors[CONF_NAME] = "name_taken"
             else:
                 return self.async_update_reload_and_abort(
                     entry, title=name, data=_entry_data(user_input, name, dict(entry.data))
@@ -68,7 +73,8 @@ class BabyTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                SCHEMA, {CONF_NAME: entry.title, CONF_BIRTH_DATE: entry.data.get(CONF_BIRTH_DATE)}
+                SCHEMA,
+                user_input or {CONF_NAME: entry.title, CONF_BIRTH_DATE: entry.data.get(CONF_BIRTH_DATE)},
             ),
             errors=errors,
         )

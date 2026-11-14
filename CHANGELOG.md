@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Actions reject times in the future (`time`, `start`, `end`, and moving a sleep in the
+  calendar), so a mistyped time can no longer count as today, hide from the card's log or
+  leave the baby stuck sleeping (#16).
+- Reconfigure no longer lets two babies have the same name (#18).
+- A side logged afterwards for a time just before a feeding is merged into that feeding
+  as its first side (#19).
+- Docs: `parts` lists `growth` and `milestones`; growth and milestone date descriptions
+  fixed (#21).
+
 ## 1.1.0
 
 - Card: new `parts` option to choose which parts the card shows and in which order
