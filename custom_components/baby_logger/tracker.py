@@ -27,6 +27,7 @@ from .const import (
     DOMAIN,
     EVENT_BABY_TRACKER,
     FEEDING_SIDES,
+    FUTURE_TOLERANCE,
     KIND_DIAPER,
     KIND_FEEDING,
     KIND_SLEEP,
@@ -120,6 +121,19 @@ def _as_utc(when: datetime | None) -> datetime:
     if when.tzinfo is None:
         when = when.replace(tzinfo=dt_util.get_default_time_zone())
     return dt_util.as_utc(when)
+
+
+def _past_utc(when: datetime | None) -> datetime:
+    """Return ``when`` in UTC (now if None); it must not be in the future.
+
+    A time up to FUTURE_TOLERANCE ahead (a clock slightly ahead of Home
+    Assistant's) is accepted as now, so a following "now" is never before it.
+    """
+    at = _as_utc(when)
+    now = dt_util.utcnow()
+    if at > now + FUTURE_TOLERANCE:
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="time_in_future")
+    return min(at, now)
 
 
 @dataclass(slots=True)
@@ -344,7 +358,9 @@ class BabyTracker:
                 translation_key="invalid_diaper_type",
                 translation_placeholders={"type": str(diaper_type)},
             )
-        event = BabyEvent(id=uuid.uuid4().hex, kind=KIND_DIAPER, start=_as_utc(when), diaper_type=diaper_type)
+        event = BabyEvent(
+            id=uuid.uuid4().hex, kind=KIND_DIAPER, start=_past_utc(when), diaper_type=diaper_type
+        )
         self._insert(event)
         self._set_undo("diaper", lambda: self._remove(event.id))
         self._changed("diaper", {"type": diaper_type, "time": event.start.isoformat()})
@@ -356,8 +372,10 @@ class BabyTracker:
     ) -> tuple[BabyEvent, bool]:
         """Log a feeding (or a side switch within the current feeding).
 
-        Returns the feeding and whether the entry was merged into the previous
-        feeding because it was within the merge window.
+        Returns the feeding and whether the entry was merged into an existing
+        feeding: the previous one, when within the merge window of its latest side
+        (or backdated inside it), or the next one, when backdated to just before it
+        (the entry is then that feeding's first side).
         """
         if side not in FEEDING_SIDES:
             raise ServiceValidationError(
@@ -365,7 +383,7 @@ class BabyTracker:
                 translation_key="invalid_side",
                 translation_placeholders={"side": str(side)},
             )
-        at = _as_utc(when)
+        at = _past_utc(when)
         entry: dict[str, Any] = {"side": side, "time": at}
         if amount_ml is not None:
             entry["amount_ml"] = amount_ml
@@ -376,23 +394,41 @@ class BabyTracker:
         )
         window = timedelta(minutes=self.merge_minutes)
         # Merge when within the window of the latest switch, or when backdated to
-        # a time inside the feeding itself.
+        # a time inside the feeding itself, or to just before the next feeding.
+        target: BabyEvent | None = None
         if previous is not None and at - (previous.end or previous.start) < window:
-            before = (copy.copy(previous.sides), previous.end, previous.amount_ml)
+            target = previous
+        else:
+            following = self._next_feeding_after(at)
+            if following is not None and following.start - at < window:
+                target = following
+        if target is not None:
+            merged = target
+            first_side = at < merged.start
+            before = (copy.copy(merged.sides), merged.start, merged.end, merged.amount_ml)
 
             def restore() -> None:
-                previous.sides, previous.end, previous.amount_ml = before
+                merged.sides, merged.end, merged.amount_ml = before[0], before[2], before[3]
+                if first_side:
+                    # Moving the start changes the feeding's place in the list.
+                    self._remove(merged.id)
+                    merged.start = before[1]
+                    self._insert(merged)
 
-            previous.sides = sorted([*previous.sides, entry], key=lambda s: s["time"])
-            previous.end = max(at, previous.end or previous.start)
+            merged.sides = sorted([*merged.sides, entry], key=lambda s: s["time"])
+            merged.end = max(at, merged.end or merged.start)
             if amount_ml is not None:
-                previous.amount_ml = (previous.amount_ml or 0) + amount_ml
+                merged.amount_ml = (merged.amount_ml or 0) + amount_ml
+            if first_side:
+                self._remove(merged.id)
+                merged.start = at
+                self._insert(merged)
             self._set_undo("feeding", restore)
-            self._changed(
-                "feeding",
-                {"side": side, "amount_ml": amount_ml, "same_feeding": True, "time": at.isoformat()},
-            )
-            return previous, True
+            data = {"side": side, "amount_ml": amount_ml, "same_feeding": True, "time": at.isoformat()}
+            if first_side:
+                data["first_side"] = True
+            self._changed("feeding", data)
+            return merged, True
 
         event = BabyEvent(
             id=uuid.uuid4().hex,
@@ -409,6 +445,15 @@ class BabyTracker:
         )
         return event, False
 
+    def _next_feeding_after(self, at: datetime) -> BabyEvent | None:
+        """Return the first feeding that starts after ``at``, if any."""
+        # Usually there is none (a feeding logged now): check the latest one first.
+        latest = next((e for e in reversed(self.events) if e.kind == KIND_FEEDING), None)
+        if latest is None or latest.start <= at:
+            return None
+        index = bisect.bisect_right([e.start for e in self.events], at)
+        return next((e for e in self.events[index:] if e.kind == KIND_FEEDING), None)
+
     @property
     def sleeping(self) -> bool:
         """Return True while the baby is asleep."""
@@ -419,7 +464,7 @@ class BabyTracker:
         """Mark the baby as asleep."""
         if self.sleeping:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="already_sleeping")
-        at = _as_utc(when)
+        at = _past_utc(when)
 
         def restore() -> None:
             self.sleep_start = None
@@ -434,7 +479,7 @@ class BabyTracker:
         """Mark the baby as awake and store the finished sleep."""
         if self.sleep_start is None:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="not_sleeping")
-        at = _as_utc(when)
+        at = _past_utc(when)
         started = self.sleep_start
         if at <= started:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="end_before_start")
@@ -468,7 +513,7 @@ class BabyTracker:
     @callback
     def async_add_sleep(self, start: datetime, end: datetime) -> BabyEvent:
         """Add a finished sleep after the fact."""
-        start_utc, end_utc = _as_utc(start), _as_utc(end)
+        start_utc, end_utc = _past_utc(start), _past_utc(end)
         if end_utc <= start_utc:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="end_before_start")
         event = BabyEvent(id=uuid.uuid4().hex, kind=KIND_SLEEP, start=start_utc, end=end_utc)
@@ -481,7 +526,7 @@ class BabyTracker:
     def async_update_sleep(self, event_id: str, start: datetime, end: datetime) -> BabyEvent:
         """Change the times of a finished sleep."""
         event = self.get_event(event_id, KIND_SLEEP)
-        start_utc, end_utc = _as_utc(start), _as_utc(end)
+        start_utc, end_utc = _past_utc(start), _past_utc(end)
         if end_utc <= start_utc:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="end_before_start")
         old = (event.start, event.end)

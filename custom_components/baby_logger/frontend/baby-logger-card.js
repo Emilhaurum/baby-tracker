@@ -17,7 +17,7 @@
  *   night_days: 14            nights in the night sleep chart
  *   night_start: "21:00"      optional; defaults to the integration's "Night starts" setting
  *   night_end: "07:00"        optional; defaults to the integration's "Night ends" setting
- *   parts: [header, tiles, buttons, undo, summary, trends, nights, timeline, log]
+ *   parts: [header, tiles, buttons, undo, summary, trends, nights, timeline, log, growth, milestones]
  *                             optional; the parts to show, in order (replaces the show_* flags)
  *   buttons:                  optional; quick buttons for the "buttons" part, in order
  *     - action: sleep         sleep | diaper_wet | diaper_dirty | diaper_both |

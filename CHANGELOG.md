@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Actions reject times in the future (`time`, `start`, `end`, and moving a sleep in the
+  calendar), so a mistyped time can no longer count as today, hide from the card's log or
+  leave the baby stuck sleeping (#16).
+- Two babies can no longer get the same name through Reconfigure; adding or renaming a baby
+  to a taken name shows an error on the form so it can be corrected (#18).
+- A side logged afterwards for a time just before a feeding is merged into that feeding
+  as its first side (#19).
+- Docs: `parts` lists `growth` and `milestones`; growth and milestone date descriptions
+  fixed (#21).
 - Milestones: shown as a timeline (reached ones in order, then the next few) instead of the
   full board; tap one to expand it, or expand all at once (#11).
 - Milestones: **Add** opens a window that suggests similar milestones as you type; built-in
