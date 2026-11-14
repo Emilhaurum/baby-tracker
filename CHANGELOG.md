@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-- Docs: why Home Assistant 2026.11 is the minimum. Older releases often show *Custom
+- Actions reject times in the future (`time`, `start`, `end`, and moving a sleep in the
+  calendar), so a mistyped time can no longer count as today, hide from the card's log or
+  leave the baby stuck sleeping (#16).
+- Two babies can no longer get the same name through Reconfigure; adding or renaming a baby
+  to a taken name shows an error on the form so it can be corrected (#18).
+- A side logged afterwards for a time just before a feeding is merged into that feeding
+  as its first side (#19).
+- Docs: `parts` lists `growth` and `milestones`; growth and milestone date descriptions
+  fixed (#21).
+- Docs: why Home Assistant 2026.11 is the minimum. Older releases usually show *Custom
   element doesn't exist* instead of the card (#20).
 
 ## 1.1.0
