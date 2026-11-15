@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 - Danish translation (dansk): setup, entity names, actions, error messages and the logbook
   follow the Home Assistant language, and the card follows the user's language with
