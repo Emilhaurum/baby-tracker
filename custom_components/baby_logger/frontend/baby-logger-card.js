@@ -220,6 +220,7 @@ export const I18N = {
     "log.feeding": "Feeding: {sides}{amount}",
     "log.sleep": "Sleep {duration} ({from}–{to})",
     "log.confirm": "Delete \"{text}\"?",
+    "log.this_entry": "this entry",
     "tile.diaper": "Diaper",
     "tile.feeding": "Feeding",
     "tile.sleeping": "Sleeping",
@@ -406,6 +407,7 @@ export const I18N = {
     "log.feeding": "Måltid: {sides}{amount}",
     "log.sleep": "Søvn {duration} ({from}–{to})",
     "log.confirm": "Slet \"{text}\"?",
+    "log.this_entry": "denne registrering",
     "tile.diaper": "Ble",
     "tile.feeding": "Måltid",
     "tile.sleeping": "Sover",
@@ -510,6 +512,9 @@ const LOCALES = { en: [], da: "da-DK" }; // English keeps the browser's own date
 // The language being rendered: set by each card (and the editor) before it renders.
 let LANG = "en";
 let LOCALE = [];
+// The Home Assistant user's language as last seen, for a card that renders before it gets
+// hass (e.g. one rebuilt after reconnecting, shown from the cache).
+let lastHassLanguage = null;
 
 /** Use a language ("en", "da"; anything else falls back to English). */
 export function setLanguage(lang) {
@@ -519,7 +524,9 @@ export function setLanguage(lang) {
 
 /** The language for a card: its `language` option, else the Home Assistant user's language. */
 export function cardLanguage(config, hass) {
-  const wanted = config?.language && config.language !== "auto" ? config.language : hass?.locale?.language || hass?.language;
+  const fromHass = hass?.locale?.language || hass?.language;
+  if (fromHass) lastHassLanguage = fromHass;
+  const wanted = config?.language && config.language !== "auto" ? config.language : fromHass || lastHassLanguage;
   const code = String(wanted || "en").toLowerCase().split(/[-_]/)[0];
   return Object.hasOwn(I18N, code) ? code : "en";
 }
@@ -538,9 +545,11 @@ function tn(n, key) {
 
 /** A number with a fixed number of decimals, with the language's decimal separator. */
 export function num(value, decimals) {
-  const fixed = Number(value).toFixed(decimals);
-  return LANG === "en" ? fixed : fixed.replace(".", ",");
+  return localDecimal(Number(value).toFixed(decimals));
 }
+
+/** A number as short as possible ("6", "6.5"), with the language's decimal separator. */
+const localDecimal = (value) => (LANG === "en" ? String(value) : String(value).replace(".", ","));
 
 /** An object whose properties are translated texts: keys[i] -> t(`${prefix}.${keys[i]}`). */
 function translated(keys, prefix) {
@@ -1106,7 +1115,7 @@ export function milestoneTimeline(milestones) {
 
 const STOP_WORDS = new Set([
   ...["a", "an", "the", "to", "of", "on", "in", "at", "with", "and", "from", "for", "by", "his", "her", "their", "own", "baby", "said", "says", "say"],
-  ...["en", "et", "den", "det", "de", "og", "i", "pa", "til", "af", "med", "sin", "sit", "sine", "hans", "hendes", "babyen", "sagde", "siger"],
+  ...["en", "et", "den", "det", "de", "og", "i", "pa", "til", "af", "med", "sin", "sit", "sine", "hans", "hendes", "babyen"],
 ]);
 
 /** Lower case, without accents or punctuation. */
@@ -1359,7 +1368,7 @@ function growthChart(points, { byAge, unit, decimals }) {
   const yStep = niceStep(y1 - y0, 4);
   for (let y = Math.ceil(y0 / yStep) * yStep; y <= y1; y += yStep) {
     svg += `<line x1="${left}" x2="${width - right}" y1="${sy(y).toFixed(1)}" y2="${sy(y).toFixed(1)}" class="grid"/>`;
-    svg += `<text x="${left - 4}" y="${(sy(y) + 3).toFixed(1)}" class="yaxis">${Number(y.toFixed(2))}</text>`;
+    svg += `<text x="${left - 4}" y="${(sy(y) + 3).toFixed(1)}" class="yaxis">${localDecimal(Number(y.toFixed(2)))}</text>`;
   }
   if (byAge) {
     const step = [1, 2, 3, 6, 12, 24, 36].find((s) => (x1 - x0) / s <= 8) ?? 48;
@@ -1410,7 +1419,7 @@ function dayLabel(date, now = new Date()) {
   return date.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" });
 }
 
-function stackedBars(buckets, keys, colors, valueFn, { unit = "", decimals = 0 } = {}) {
+function stackedBars(buckets, keys, colors, valueFn, { unit = "", decimals = 0, labels = {} } = {}) {
   const width = 280;
   const height = 110;
   const top = 14;
@@ -1430,11 +1439,11 @@ function stackedBars(buckets, keys, colors, valueFn, { unit = "", decimals = 0 }
       if (v <= 0) continue;
       const h = v * scale;
       y -= h;
-      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${colors[k]}"><title>${esc(k)}: ${v.toFixed(decimals)}${unit}</title></rect>`;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${colors[k]}"><title>${esc(labels[k] ?? k)}: ${num(v, decimals)}${unit}</title></rect>`;
     }
     const total = totals[i];
     if (Number(total.toFixed(decimals)) > 0) {
-      bars += `<text x="${(x + barWidth / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" class="value">${total.toFixed(decimals)}</text>`;
+      bars += `<text x="${(x + barWidth / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" class="value">${num(total, decimals)}</text>`;
     }
     const label = b.start.toLocaleDateString(LOCALE, { weekday: "narrow" });
     bars += `<text x="${(x + barWidth / 2).toFixed(1)}" y="${height - 4}" class="axis">${esc(label)}</text>`;
@@ -1481,7 +1490,8 @@ class BabyTrackerCard extends HTMLElement {
 
   /** Render in this card's language (its option, or the Home Assistant user's language). */
   _applyLanguage() {
-    setLanguage(cardLanguage(this._config, this._hass));
+    this._lang = cardLanguage(this._config, this._hass);
+    setLanguage(this._lang);
   }
 
   setConfig(config) {
@@ -1502,6 +1512,8 @@ class BabyTrackerCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // The user changed their language (or this card rendered before it had hass).
+    if (this._config && this._lang && cardLanguage(this._config, hass) !== this._lang) this._render();
     // After an error, wait before retrying instead of retrying on every state change.
     if (!this._unsub && !this._subscribing && Date.now() >= this._retryAt) this._subscribe();
   }
@@ -1540,7 +1552,7 @@ class BabyTrackerCard extends HTMLElement {
       let entryId = this._config.entry_id;
       if (!entryId) {
         const babies = await this._hass.callWS({ type: `${DOMAIN}/babies` });
-        if (!babies.length) throw new Error(t("no_baby"));
+        if (!babies.length) throw Object.assign(new Error("no_baby"), { key: "no_baby" });
         entryId = babies[0].entry_id;
         defaultEntryId = entryId;
       }
@@ -1567,7 +1579,8 @@ class BabyTrackerCard extends HTMLElement {
       this._retryAt = 0;
     } catch (err) {
       if (generation !== this._generation) return;
-      this._error = err && err.message ? err.message : String(err);
+      // Our own errors are translated when shown; Home Assistant's come translated.
+      this._error = err && err.key ? { key: err.key } : err && err.message ? err.message : String(err);
       this._retryAt = Date.now() + 30000;
       this._backgroundRender();
     } finally {
@@ -1808,7 +1821,7 @@ class BabyTrackerCard extends HTMLElement {
         break;
       case "delete": {
         const event = (this._data?.events || []).find((e) => e.id === value);
-        const text = event ? describe(event).text : "";
+        const text = event ? describe(event).text : t("log.this_entry");
         if (window.confirm(t("log.confirm", { text }))) this._call("delete_event", { event_id: value });
         break;
       }
@@ -1953,7 +1966,7 @@ class BabyTrackerCard extends HTMLElement {
     }
     noteScrollAnchor();
     if (this._error) {
-      card.innerHTML = `<div class="message error">${esc(this._error)}</div>`;
+      card.innerHTML = `<div class="message error">${esc(this._error.key ? t(this._error.key) : this._error)}</div>`;
     } else if (!this._data) {
       card.innerHTML = `<div class="message">${esc(t("loading"))}</div>`;
     } else {
@@ -2492,13 +2505,13 @@ class BabyTrackerCard extends HTMLElement {
           <div class="section-title">${esc(t("trends.title", { n: buckets.length }))}</div>
           <div class="charts">
             <div class="chart"><div class="chart-title">${esc(t("trends.diapers"))}</div>
-              ${stackedBars(buckets, Object.keys(DIAPER), Object.fromEntries(Object.entries(DIAPER).map(([k, v]) => [k, v.color])), (b, k) => b.diapers[k])}
+              ${stackedBars(buckets, Object.keys(DIAPER), Object.fromEntries(Object.entries(DIAPER).map(([k, v]) => [k, v.color])), (b, k) => b.diapers[k], { labels: Object.fromEntries(Object.entries(DIAPER).map(([k, v]) => [k, v.label])) })}
               ${legend(Object.values(DIAPER).map((v) => [v.label, v.color]))}</div>
             <div class="chart"><div class="chart-title">${esc(t("trends.feedings"))}</div>
-              ${stackedBars(buckets, Object.keys(SIDES), Object.fromEntries(Object.entries(SIDES).map(([k, v]) => [k, v.color])), (b, k) => b.feedings[k])}
+              ${stackedBars(buckets, Object.keys(SIDES), Object.fromEntries(Object.entries(SIDES).map(([k, v]) => [k, v.color])), (b, k) => b.feedings[k], { labels: Object.fromEntries(Object.entries(SIDES).map(([k, v]) => [k, v.label])) })}
               ${legend(Object.values(SIDES).map((v) => [v.label, v.color]))}</div>
             <div class="chart wide"><div class="chart-title">${esc(t("trends.sleep"))}</div>
-              ${stackedBars(buckets, ["sleep"], { sleep: SLEEP_COLORS.night }, (b) => b.sleep, { unit: ` ${t("unit.h")}`, decimals: 1 })}</div>
+              ${stackedBars(buckets, ["sleep"], { sleep: SLEEP_COLORS.night }, (b) => b.sleep, { unit: ` ${t("unit.h")}`, decimals: 1, labels: { sleep: t("button.sleep") } })}</div>
           </div>
         </div>`;
   }
@@ -2713,6 +2726,7 @@ class BabyTrackerCardEditor extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
+    if (this._config && this._lang && cardLanguage({}, hass) !== this._lang) this._render();
     if (first) {
       hass
         .callWS({ type: `${DOMAIN}/babies` })
@@ -2806,7 +2820,9 @@ class BabyTrackerCardEditor extends HTMLElement {
 
   _render() {
     if (!this._config) return;
-    setLanguage(cardLanguage(this._config, this._hass));
+    // The editor itself is in the user's language (the card's option is for the card).
+    this._lang = cardLanguage({}, this._hass);
+    setLanguage(this._lang);
     const c = { ...DEFAULTS, ...this._config };
     const babies = this._babies || [];
     const languages = [["auto", t("ed.language_auto")], ...Object.entries(LANGUAGES)]

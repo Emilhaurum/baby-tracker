@@ -35,8 +35,12 @@ test("the card follows the Home Assistant user's language unless set", () => {
   assert.equal(cardLanguage({ language: "da" }, { locale: { language: "en" } }), "da");
   // Anything else is English.
   assert.equal(cardLanguage({}, { locale: { language: "fr" } }), "en");
+  assert.equal(cardLanguage({ language: "xx" }, { locale: { language: "en" } }), "en");
+  // Before a card has hass (e.g. rebuilt from the cache) it uses the language last seen.
+  cardLanguage({}, { locale: { language: "da" } });
+  assert.equal(cardLanguage({}, undefined), "da");
+  cardLanguage({}, { locale: { language: "en" } });
   assert.equal(cardLanguage({}, undefined), "en");
-  assert.equal(cardLanguage({ language: "xx" }, undefined), "en");
 });
 
 test("texts, numbers and durations in Danish", () => {
@@ -76,18 +80,21 @@ const CATALOGUE = [
   m("crawls", "Crawls", ["Kravler", ["kravle", "kravler", "kravlede"]], { tags: ["crawl", "crawling"] }),
   m("first_tooth", "First tooth", ["Første tand", ["tand", "tænder", "tandfrembrud"]], { tags: ["tooth", "teeth"] }),
   m("first_steps", "First steps on their own", ["Første skridt på egen hånd", ["går", "gå", "skridt"]], { tags: ["walk", "walking"] }),
+  m("first_word", "First word", ["Første ord", ["ord", "siger", "sagde", "mor"]], { tags: ["word", "talk"] }),
   m("custom_1", "Svømmetur", null, { custom: true }),
 ];
 
 test("milestone names and search in Danish", () => {
   setLanguage("da");
   assert.equal(milestoneName(CATALOGUE[0]), "Kravler");
-  assert.equal(milestoneName(CATALOGUE[3]), "Svømmetur");
+  assert.equal(milestoneName(CATALOGUE.find((x) => x.key === "custom_1")), "Svømmetur");
   const keys = (q) => matchMilestones(q, CATALOGUE).map((x) => x.key);
   assert.deepEqual(keys("kravler"), ["crawls"]);
   assert.deepEqual(keys("tænder"), ["first_tooth"]);
   assert.deepEqual(keys("første skridt"), ["first_steps"]);
   assert.deepEqual(keys("svømmetur"), ["custom_1"]);
+  assert.deepEqual(keys("sagde mor"), ["first_word"]);
+  assert.deepEqual(keys("siger"), ["first_word"]);
   // English words still find them.
   assert.deepEqual(keys("crawling"), ["crawls"]);
   setLanguage("en");

@@ -323,6 +323,20 @@ test("Danish, following the Home Assistant user's language", async () => {
   await context.close();
 });
 
+test("a card rebuilt in Danish shows Danish straight away", async () => {
+  const { page, context } = await mount({ language: "da", config: { parts: ["header", "tiles"] } });
+  // Home Assistant builds the card again and attaches it before giving it hass.
+  const chips = await page.evaluate(() => {
+    const old = document.querySelector("baby-logger-card");
+    const card = document.createElement("baby-logger-card");
+    card.setConfig({ parts: ["header", "tiles"] });
+    old.replaceWith(card);
+    return [...card.shadowRoot.querySelectorAll(".chip")].map((c) => c.textContent);
+  });
+  assert.deepEqual(chips, ["3 bleer", "2 måltider"]);
+  await context.close();
+});
+
 test("the language option overrides Home Assistant's", async () => {
   const { page, context } = await mount({ language: "da", config: { language: "en", parts: ["header"] } });
   assert.deepEqual(await page.locator("baby-logger-card").locator(".chip").allTextContents(), ["3 diapers", "2 feedings"]);

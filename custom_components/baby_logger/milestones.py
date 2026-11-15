@@ -303,7 +303,7 @@ MILESTONES_DA: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "waves": ("Vinker farvel", ("vinke", "vinker", "farvel", "hej hej")),
     "first_word": (
         "Første ord (“mor”, “far” …)",
-        ("ord", "tale", "taler", "siger", "mor", "far", "mama", "dada"),
+        ("ord", "tale", "taler", "siger", "sagde", "mor", "far", "mama", "dada"),
     ),
     "points": ("Peger for at vise dig noget", ("pege", "peger", "viser")),
     "three_words": ("Siger tre eller flere ord", ("ord", "ordforråd", "tale", "taler")),
@@ -324,14 +324,20 @@ MILESTONES_DA: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
 }
 
 
+# The same for every snapshot, so built once.
+_TRANSLATIONS: Final[dict[str, dict[str, dict[str, object]]]] = {
+    key: {"da": {"name": name, "tags": list(tags)}} for key, (name, tags) in MILESTONES_DA.items()
+}
+
+
 def milestone_translations(key: str) -> dict[str, dict[str, object]]:
     """Return a built-in milestone's names and search words in other languages."""
-    name, tags = MILESTONES_DA[key]
-    return {"da": {"name": name, "tags": list(tags)}}
+    return _TRANSLATIONS[key]
 
 
 def localized_milestone_name(key: str, fallback: str, language: str | None) -> str:
     """Return a built-in milestone's name in a language, or ``fallback``."""
-    if language and language.lower().startswith("da") and key in MILESTONES_DA:
+    code = (language or "").lower().replace("_", "-").split("-")[0]
+    if code == "da" and key in MILESTONES_DA:
         return MILESTONES_DA[key][0]
     return fallback

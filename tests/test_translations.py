@@ -71,7 +71,9 @@ def test_logbook_in_danish() -> None:
         "☀️ vågnede efter 1t 35m ("
     )
     assert describe({"action": "delete", "kind": "sleep"}, "da") == "slettede en registrering (søvn)"
-    assert describe({"action": "growth", "weight_kg": 6.2, "length_cm": 61}, "da") == "📏 målte 6.2 kg, 61 cm"
+    assert describe({"action": "growth", "weight_kg": 6.2, "length_cm": 61}, "da") == "📏 målte 6,2 kg, 61 cm"
+    assert describe({"action": "undo", "undone": "diaper"}, "da") == "↩️ fortrød seneste handling (ble)"
+    assert describe({"action": "delete"}, "da") == "slettede en registrering"
     # Built-in milestones get their Danish name; your own keep theirs.
     assert describe({"action": "milestone", "milestone": "crawls", "milestone_name": "Crawls"}, "da") == (
         "🏁 milepæl: Kravler"
@@ -80,6 +82,9 @@ def test_logbook_in_danish() -> None:
         {"action": "add_milestone", "milestone": "custom_1", "milestone_name": "Svømning"}, "da"
     ) == ("tilføjede milepæl: Svømning")
     # English stays as it was, and unknown languages fall back to English.
+    assert describe({"action": "growth", "weight_kg": 6.2}) == "📏 measured 6.2 kg"
+    assert describe({"action": "undo", "undone": "diaper"}) == "↩️ undid the last action (diaper)"
+    assert describe({"action": "delete", "kind": "sleep"}) == "deleted a sleep entry"
     assert describe({"action": "diaper", "type": "wet", "time": at}).startswith("logged a 💧 wet diaper (")
     assert describe({"action": "milestone", "milestone": "crawls", "milestone_name": "Crawls"}, "fr") == (
         "🏁 milestone: Crawls"

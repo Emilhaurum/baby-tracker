@@ -22,6 +22,8 @@ TEXTS: dict[str, dict[str, Any]] = {
         "diaper_default": "diaper",
         "sides": {"left": "left", "right": "right", "bottle": "bottle"},
         "kinds": {"diaper": "diaper", "feeding": "feeding", "sleep": "sleep"},
+        "undone": {},
+        "decimal": ".",
         "diaper": "logged a {diaper} ({at})",
         "first_side": "logged {side} as the first side of a feeding{amount} ({at})",
         "same_feeding": "switched to {side} in the same feeding{amount} ({at})",
@@ -30,7 +32,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "wake": "☀️ woke up after {hours}h {minutes:02d}m ({at})",
         "undo": "↩️ undid the last action ({undone})",
         "delete": "deleted a {kind} entry",
-        "delete_default": "logged",
+        "delete_unknown": "deleted a logged entry",
         "add_sleep": "😴 sleep added ({start}–{end})",
         "update_sleep": "😴 sleep changed",
         "growth": "📏 measured {values}",
@@ -45,6 +47,23 @@ TEXTS: dict[str, dict[str, Any]] = {
         "diaper_default": "ble",
         "sides": {"left": "venstre", "right": "højre", "bottle": "flaske"},
         "kinds": {"diaper": "ble", "feeding": "måltid", "sleep": "søvn"},
+        # What was undone, by action.
+        "undone": {
+            "diaper": "ble",
+            "feeding": "måltid",
+            "sleep": "faldt i søvn",
+            "wake": "vågnede",
+            "add_sleep": "søvn tilføjet",
+            "update_sleep": "søvn ændret",
+            "delete": "sletning",
+            "growth": "måling",
+            "delete_growth": "sletning af måling",
+            "milestone": "milepæl",
+            "clear_milestone": "milepæl nulstillet",
+            "add_milestone": "ny milepæl",
+            "delete_milestone": "milepæl slettet",
+        },
+        "decimal": ",",
         "diaper": "registrerede en {diaper} ({at})",
         "first_side": "registrerede {side} som første side i et måltid{amount} ({at})",
         "same_feeding": "skiftede til {side} i samme måltid{amount} ({at})",
@@ -53,7 +72,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "wake": "☀️ vågnede efter {hours}t {minutes:02d}m ({at})",
         "undo": "↩️ fortrød seneste handling ({undone})",
         "delete": "slettede en registrering ({kind})",
-        "delete_default": "registrering",
+        "delete_unknown": "slettede en registrering",
         "add_sleep": "😴 søvn tilføjet ({start}–{end})",
         "update_sleep": "😴 søvn ændret",
         "growth": "📏 målte {values}",
@@ -102,20 +121,22 @@ def describe(data: dict[str, Any], language: str | None = "en") -> str:
         minutes = int(data.get("minutes") or 0)
         return text["wake"].format(hours=minutes // 60, minutes=minutes % 60, at=at)
     if action == "undo":
-        return text["undo"].format(undone=data.get("undone"))
+        undone = data.get("undone")
+        return text["undo"].format(undone=text["undone"].get(undone, undone))
     if action == "delete":
         kind = data.get("kind")
-        return text["delete"].format(kind=text["kinds"].get(kind, kind or text["delete_default"]))
+        if not kind:
+            return text["delete_unknown"]
+        return text["delete"].format(kind=text["kinds"].get(kind, kind))
     if action == "add_sleep":
         return text["add_sleep"].format(start=_clock(data.get("start")), end=_clock(data.get("end")))
     if action == "update_sleep":
         return text["update_sleep"]
     if action == "growth":
         values = []
-        if data.get("weight_kg") is not None:
-            values.append(f"{data['weight_kg']:g} kg")
-        if data.get("length_cm") is not None:
-            values.append(f"{data['length_cm']:g} cm")
+        for field, unit in (("weight_kg", "kg"), ("length_cm", "cm")):
+            if data.get(field) is not None:
+                values.append(f"{data[field]:g}".replace(".", text["decimal"]) + f" {unit}")
         return text["growth"].format(values=", ".join(values))
     if action == "delete_growth":
         return text["delete_growth"]
