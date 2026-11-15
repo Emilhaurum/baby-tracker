@@ -46,6 +46,8 @@ Everything is stored locally in Home Assistant.
   sitting, crawling, first word, first steps …) with typical ages, plus your own. Adding one
   suggests similar milestones as you type.
 - **Several babies**: add the integration once per baby.
+- **English and Danish**: setup, entities, actions, the logbook and the card follow your
+  Home Assistant language (see [Languages](#languages)).
 - Logbook entries and a `baby_logger_event` event for every action, for use in automations.
 
 ## Installation
@@ -94,6 +96,7 @@ type: custom:baby-logger-card
 | `units` | `metric` | Units for growth: `metric` (kg, cm) or `imperial` (lb + oz, in). |
 | `growth_entries` | `5` | Measurements listed under the growth charts (0 hides the list). |
 | `growth_list` | `collapsed` | Whether the measurement list starts `collapsed` or `expanded`. |
+| `language` | `auto` | The card's language: `auto` (the Home Assistant user's language), `en` or `da`. |
 | `show_summary` | `true` | Show last night and daytime sleep. |
 | `show_trends` | `true` | Show the diaper, feeding and sleep charts. |
 | `show_nights` | `true` | Show the night sleep chart. |
@@ -348,6 +351,23 @@ actions:
     data:
       message: "Time to feed Alex (next: {{ states('sensor.alex_next_feeding_side') }})"
 ```
+
+## Languages
+
+Baby Tracker is available in English and Danish (dansk).
+
+- Setup, entity names, actions and error messages use your Home Assistant language
+  (your profile's language). Entity IDs are created once, in the language used when the
+  baby was added.
+- The logbook uses the system language (Settings → System → General).
+- The card follows the language of the user who is looking at it, with Danish dates and
+  numbers. Set `language: da` or `language: en` on a card (or pick it in the card editor)
+  to always show it in one language.
+- Built-in milestones have Danish names and Danish search words, so "kravler" or "tænder"
+  finds them when you add one; English words work as well. Milestones you add keep the
+  name you gave them.
+
+Any other language falls back to English.
 
 ## Data and privacy
 

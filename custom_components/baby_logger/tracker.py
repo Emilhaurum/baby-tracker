@@ -45,7 +45,7 @@ from .const import (
     STORAGE_VERSION,
     UNDO_SECONDS,
 )
-from .milestones import MILESTONES, MILESTONES_BY_KEY
+from .milestones import MILESTONES, MILESTONES_BY_KEY, milestone_translations
 from .stats import Interval, WindowStats, average, night_day_stats, overlap_seconds
 
 _LOGGER = logging.getLogger(__name__)
@@ -770,6 +770,7 @@ class BabyTracker:
                 "months": m.months,
                 "cdc": m.cdc,
                 "tags": list(m.tags),
+                "i18n": milestone_translations(m.key),
                 "custom": False,
                 **state(m.key),
             }
@@ -783,6 +784,7 @@ class BabyTracker:
                 "months": None,
                 "cdc": False,
                 "tags": [],
+                "i18n": {},
                 "custom": True,
                 **state(c["id"]),
             }

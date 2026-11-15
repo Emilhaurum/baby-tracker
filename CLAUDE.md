@@ -98,6 +98,12 @@ python scripts/set_version.py 1.2.3   # bump the version everywhere
   `this._*Form` (`data-form` / `data-field` inputs) so typing survives a re-render.
 - **Version:** it must match in `manifest.json`, the card and `pyproject.toml` (use
   `scripts/set_version.py`). Add a `CHANGELOG.md` section for each release.
+- **Languages:** English and Danish. Every user-facing text needs both:
+  - Integration: `translations/en.json` and `translations/da.json` (same keys; a test checks).
+  - Card: the `I18N` table in the card (`t("key")`, `tn(n, "key")` for "1 day / 2 days",
+    `num()` for decimals); a test checks that `da` has every `en` key.
+  - Logbook: `TEXTS` in `logbook.py`. Built-in milestones: `MILESTONES_DA` in `milestones.py`
+    (Danish name and search words for every milestone; a test checks).
 - **README:** keep it up to date. Every change to features, options, entities or actions
   updates the README in the same change, along with the changelog. Images use absolute `raw.githubusercontent.com` URLs so they also render in
   HACS. Screenshots are in `docs/`.

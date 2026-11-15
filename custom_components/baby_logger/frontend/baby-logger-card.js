@@ -29,44 +29,29 @@
  *   units: metric             metric (kg, cm) or imperial (lb + oz, in) for growth
  *   growth_entries: 5         measurements listed under the growth charts
  *   growth_list: collapsed    the measurement list starts collapsed or expanded
+ *   language: auto            auto (the Home Assistant user's language), en or da
  */
 
 const CARD_VERSION = "1.2.1";
 const DOMAIN = "baby_logger";
 
 const DIAPER = {
-  wet: { label: "Wet", emoji: "💧", color: "#2196f3" },
-  dirty: { label: "Dirty", emoji: "💩", color: "#8d6e63" },
-  both: { label: "Both", emoji: "💧💩", color: "#ff9800" },
+  wet: { get label() { return t("diaper.wet"); }, emoji: "💧", color: "#2196f3" },
+  dirty: { get label() { return t("diaper.dirty"); }, emoji: "💩", color: "#8d6e63" },
+  both: { get label() { return t("diaper.both"); }, emoji: "💧💩", color: "#ff9800" },
 };
 const SIDES = {
-  left: { label: "Left", icon: "mdi:arrow-left-bold-circle", color: "#ab47bc" },
-  right: { label: "Right", icon: "mdi:arrow-right-bold-circle", color: "#5c6bc0" },
-  bottle: { label: "Bottle", icon: "mdi:baby-bottle", color: "#26a69a" },
+  left: { get label() { return t("side.left"); }, icon: "mdi:arrow-left-bold-circle", color: "#ab47bc" },
+  right: { get label() { return t("side.right"); }, icon: "mdi:arrow-right-bold-circle", color: "#5c6bc0" },
+  bottle: { get label() { return t("side.bottle"); }, icon: "mdi:baby-bottle", color: "#26a69a" },
 };
 const SLEEP_COLORS = { night: "#3f51b5", day: "#ffb300" };
-const UNDO_LABELS = {
-  diaper: "Diaper logged",
-  feeding: "Feeding logged",
-  sleep: "Fell asleep",
-  wake: "Woke up",
-  add_sleep: "Sleep added",
-  update_sleep: "Sleep changed",
-  delete: "Entry deleted",
-  growth: "Measurement logged",
-  delete_growth: "Measurement deleted",
-  milestone: "Milestone saved",
-  clear_milestone: "Milestone cleared",
-  add_milestone: "Milestone added",
-  delete_milestone: "Milestone deleted",
-};
-const MILESTONE_CATEGORIES = {
-  movement: "Movement",
-  communication: "Communication",
-  social: "Social",
-  firsts: "Firsts",
-  custom: "Your milestones",
-};
+// Names that follow the card's language (see I18N below).
+const UNDO_LABELS = translated(
+  ["diaper", "feeding", "sleep", "wake", "add_sleep", "update_sleep", "delete", "growth", "delete_growth", "milestone", "clear_milestone", "add_milestone", "delete_milestone"],
+  "undo"
+);
+const MILESTONE_CATEGORIES = translated(["movement", "communication", "social", "firsts", "custom"], "category");
 // Milestones not reached yet that the timeline shows before "Show more".
 const UPCOMING_SHOWN = 4;
 const KG_PER_LB = 0.45359237;
@@ -89,36 +74,25 @@ const DEFAULTS = {
   units: "metric",
   growth_entries: 5,
   growth_list: "collapsed",
+  language: "auto",
 };
 const NIGHTS_MAX = 366;
 
 // Parts of the card that can be shown, in the editor's default order.
 const PARTS = ["header", "tiles", "buttons", "undo", "summary", "trends", "nights", "timeline", "log", "growth", "milestones"];
-const PART_LABELS = {
-  header: "Header (name and today's counts)",
-  tiles: "Diaper / feeding / sleep tiles",
-  buttons: "Quick buttons",
-  undo: "Undo banner",
-  summary: "Night / daytime summary",
-  trends: "Trends",
-  nights: "Night sleep",
-  timeline: "Sleep timeline",
-  log: "Log",
-  growth: "Growth (weight and length)",
-  milestones: "Milestones",
-};
+const PART_LABELS = translated(PARTS, "part");
 // Parts that need the sleep history.
 const SLEEP_PARTS = ["nights", "timeline"];
 
 const BUTTON_ACTIONS = {
-  sleep: { name: "Sleep", icon: "mdi:sleep", color: "indigo", columns: 12 },
-  diaper_wet: { name: "Wet", icon: "mdi:water", color: "blue", action: "diaper", value: "wet" },
-  diaper_dirty: { name: "Dirty", icon: "mdi:emoticon-poop", color: "brown", action: "diaper", value: "dirty" },
-  diaper_both: { name: "Both", icon: "mdi:water-plus", color: "orange", action: "diaper", value: "both" },
-  feed_left: { name: "Left", icon: "mdi:arrow-left-bold-circle", color: "pink", action: "feed", value: "left" },
-  feed_right: { name: "Right", icon: "mdi:arrow-right-bold-circle", color: "purple", action: "feed", value: "right" },
-  feed_bottle: { name: "Bottle", icon: "mdi:baby-bottle", color: "cyan", action: "feed", value: "bottle" },
-  undo: { name: "Undo", icon: "mdi:undo-variant", color: "grey", columns: 12 },
+  sleep: { get name() { return t("button.sleep"); }, icon: "mdi:sleep", color: "indigo", columns: 12 },
+  diaper_wet: { get name() { return t("button.diaper_wet"); }, icon: "mdi:water", color: "blue", action: "diaper", value: "wet" },
+  diaper_dirty: { get name() { return t("button.diaper_dirty"); }, icon: "mdi:emoticon-poop", color: "brown", action: "diaper", value: "dirty" },
+  diaper_both: { get name() { return t("button.diaper_both"); }, icon: "mdi:water-plus", color: "orange", action: "diaper", value: "both" },
+  feed_left: { get name() { return t("button.feed_left"); }, icon: "mdi:arrow-left-bold-circle", color: "pink", action: "feed", value: "left" },
+  feed_right: { get name() { return t("button.feed_right"); }, icon: "mdi:arrow-right-bold-circle", color: "purple", action: "feed", value: "right" },
+  feed_bottle: { get name() { return t("button.feed_bottle"); }, icon: "mdi:baby-bottle", color: "cyan", action: "feed", value: "bottle" },
+  undo: { get name() { return t("button.undo"); }, icon: "mdi:undo-variant", color: "grey", columns: 12 },
 };
 const DEFAULT_BUTTONS = Object.keys(BUTTON_ACTIONS);
 
@@ -152,15 +126,437 @@ const TIMELINE_BINS = 144; // 10 minute resolution for averaged lines
 const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+// ---------------------------------------------------------------- languages
+
+// The card's texts. Danish ("da") falls back to English for anything missing.
+// n.* entries are [one, many].
+export const I18N = {
+  en: {
+    "unit.h": "h",
+    "n.day": ["day", "days"],
+    "n.week": ["week", "weeks"],
+    "n.month": ["month", "months"],
+    "n.year": ["year", "years"],
+    "n.diaper": ["diaper", "diapers"],
+    "n.feeding": ["feeding", "feedings"],
+    "n.wake": ["wake-up", "wake-ups"],
+    "n.nap": ["nap", "naps"],
+    "age.birth": "at birth",
+    today: "Today",
+    yesterday: "Yesterday",
+    loading: "Loading…",
+    nothing: "Nothing logged yet",
+    "nothing.full": "Nothing logged yet.",
+    no_baby: "No baby has been added yet. Add the Baby Tracker integration first.",
+    save: "Save",
+    cancel: "Cancel",
+    delete: "Delete",
+    undo: "Undo",
+    next: "next",
+    "diaper.wet": "Wet",
+    "diaper.dirty": "Dirty",
+    "diaper.both": "Both",
+    "side.left": "Left",
+    "side.right": "Right",
+    "side.bottle": "Bottle",
+    "undo.diaper": "Diaper logged",
+    "undo.feeding": "Feeding logged",
+    "undo.sleep": "Fell asleep",
+    "undo.wake": "Woke up",
+    "undo.add_sleep": "Sleep added",
+    "undo.update_sleep": "Sleep changed",
+    "undo.delete": "Entry deleted",
+    "undo.growth": "Measurement logged",
+    "undo.delete_growth": "Measurement deleted",
+    "undo.milestone": "Milestone saved",
+    "undo.clear_milestone": "Milestone cleared",
+    "undo.add_milestone": "Milestone added",
+    "undo.delete_milestone": "Milestone deleted",
+    "undo.saved": "Saved",
+    "category.movement": "Movement",
+    "category.communication": "Communication",
+    "category.social": "Social",
+    "category.firsts": "Firsts",
+    "category.custom": "Your milestones",
+    "part.header": "Header (name and today's counts)",
+    "part.tiles": "Diaper / feeding / sleep tiles",
+    "part.buttons": "Quick buttons",
+    "part.undo": "Undo banner",
+    "part.summary": "Night / daytime summary",
+    "part.trends": "Trends",
+    "part.nights": "Night sleep",
+    "part.timeline": "Sleep timeline",
+    "part.log": "Log",
+    "part.growth": "Growth (weight and length)",
+    "part.milestones": "Milestones",
+    "button.sleep": "Sleep",
+    "button.diaper_wet": "Wet",
+    "button.diaper_dirty": "Dirty",
+    "button.diaper_both": "Both",
+    "button.feed_left": "Left",
+    "button.feed_right": "Right",
+    "button.feed_bottle": "Bottle",
+    "button.undo": "Undo",
+    "legend.asleep": "Asleep",
+    "legend.awake": "Awake",
+    "legend.average": "Average",
+    "tl.title": "Sleep timeline",
+    "tl.title_avg": "Sleep timeline ({n}-day averages)",
+    "tl.day": "{label}: {value} asleep",
+    "tl.avg": "{label}: {value} asleep per day on average",
+    "tl.darker": "Darker = asleep on more of the {n} days",
+    "nights.title": "Night sleep",
+    "nights.tip_asleep": "{h} asleep",
+    "nights.tip_awake": "{h} awake",
+    "nights.so_far": " (so far)",
+    "nights.none": "No finished nights with sleep logged yet.",
+    "nights.avg": "<b>{h}</b> asleep on average",
+    "nights.wakes": "{n} wake-ups per night",
+    "nights.window": "Night {range}",
+    "axis.months": "{n} m",
+    "axis.years": "{n} y",
+    "log.title": "Log",
+    "log.diaper": "Diaper: {type}",
+    "log.feeding": "Feeding: {sides}{amount}",
+    "log.sleep": "Sleep {duration} ({from}–{to})",
+    "log.confirm": "Delete \"{text}\"?",
+    "tile.diaper": "Diaper",
+    "tile.feeding": "Feeding",
+    "tile.sleeping": "Sleeping",
+    "tile.awake": "Awake",
+    "tile.asleep_today": "{h} asleep today",
+    "tile.woke_up": "Woke up",
+    "tile.fell_asleep": "Fell asleep",
+    "tile.at": "{what} at {time}",
+    "bottle.amount": "Amount (ml, optional)",
+    "bottle.log": "Log bottle",
+    "qb.sleeping": "Sleeping 😴",
+    "qb.asleep_for": "Asleep for {time} — tap to wake",
+    "qb.tap_wake": "Tap to wake",
+    "qb.awake": "Awake ☀️",
+    "qb.awake_for": "Awake for {time} — tap to start sleep",
+    "qb.tap_sleep": "Tap to start sleep",
+    "qb.undo": "↩️ Undo",
+    "qb.undo_sub": "{label} · tap within {seconds}",
+    "qb.same_feeding": "same feeding",
+    "growth.title": "Growth",
+    "growth.weight": "Weight",
+    "growth.length": "Length",
+    "growth.none": "No measurements yet",
+    "growth.none_full": "No measurements yet.",
+    "growth.date": "Date",
+    "growth.add": "Add measurement",
+    "growth.list": "Measurements",
+    "growth.confirm": "Delete the measurement{text}?",
+    "ms.title": "Milestones",
+    "ms.most_by": "Most by {age}",
+    "ms.around": "Around {age}",
+    "ms.reached_on_date": "Reached on {date}",
+    "ms.cdc": "Most children by {age} (CDC)",
+    "ms.typical": "Typically around {age}",
+    "ms.note": "Note: {note}",
+    "ms.reached_on": "Reached on",
+    "ms.save_date": "Save date",
+    "ms.reached": "Reached",
+    "ms.not_reached": "Not reached",
+    "ms.up_next": "Up next",
+    "ms.fewer": "Show fewer",
+    "ms.more": "Show {n} more",
+    "ms.collapse_all": "Collapse all",
+    "ms.expand_all": "Expand all",
+    "ms.add": "Add",
+    "ms.confirm": "Delete \"{name}\"?",
+    "ms.this": "this milestone",
+    "dlg.title": "Add milestone",
+    "dlg.what": "What did {name} do?",
+    "dlg.the_baby": "the baby",
+    "dlg.placeholder": "e.g. rolls over, first swim",
+    "dlg.note": "Note",
+    "dlg.optional": "Optional",
+    "dlg.hint": "Clear the date to add it as not reached yet.",
+    "dlg.add_new": "Add as new",
+    "dlg.add_named": "Add “{name}” as new",
+    "dlg.reached": "Reached {date}",
+    "sum.last_night": "Last night",
+    "sum.today": "Today",
+    "sum.daytime": "Daytime",
+    "sum.avg": "avg {h}",
+    "trends.title": "Last {n} days",
+    "trends.diapers": "Diapers",
+    "trends.feedings": "Feedings",
+    "trends.sleep": "Sleep (hours)",
+    "ed.baby": "Baby",
+    "ed.first_baby": "First baby",
+    "ed.language": "Language",
+    "ed.language_auto": "Automatic (Home Assistant)",
+    "ed.parts": "Parts",
+    "ed.undo_hint": "Hidden undo banner: it still appears above the first buttons / tiles part when an action can be undone, unless the quick buttons have an Undo button.",
+    "ed.buttons": "Quick buttons",
+    "ed.buttons_hint": "Name, icon and colour are optional. Colours can be Home Assistant names (e.g. light-blue) or CSS colours.",
+    "ed.name": "Name",
+    "ed.up": "Move up",
+    "ed.down": "Move down",
+    "ed.per_row": "Buttons per row",
+    "ed.options": "Options",
+    "ed.tl_days": "Timeline days",
+    "ed.tl_group": "Days per timeline line",
+    "ed.every_day": "Every day",
+    "ed.average_of": "Average of {n} days",
+    "ed.tl_start": "Timeline lines start at",
+    "ed.nights": "Nights shown",
+    "ed.night_from": "Night from",
+    "ed.to": "to",
+    "ed.night_hint": "Leave the night times empty to use the integration's Night starts / Night ends settings.",
+    "ed.log_entries": "Log entries",
+    "ed.units": "Growth units",
+    "ed.metric": "Metric (kg, cm)",
+    "ed.imperial": "Imperial (lb + oz, in)",
+    "ed.growth_entries": "Measurements listed under the growth charts",
+    "ed.growth_list": "Measurement list",
+    "ed.collapsed": "Collapsed",
+    "ed.expanded": "Expanded",
+    "ed.days": "Days of history",
+  },
+  da: {
+    "unit.h": "t",
+    "n.day": ["dag", "dage"],
+    "n.week": ["uge", "uger"],
+    "n.month": ["måned", "måneder"],
+    "n.year": ["år", "år"],
+    "n.diaper": ["ble", "bleer"],
+    "n.feeding": ["måltid", "måltider"],
+    "n.wake": ["opvågning", "opvågninger"],
+    "n.nap": ["lur", "lure"],
+    "age.birth": "ved fødslen",
+    today: "I dag",
+    yesterday: "I går",
+    loading: "Indlæser…",
+    nothing: "Intet registreret endnu",
+    "nothing.full": "Intet registreret endnu.",
+    no_baby: "Der er ikke tilføjet nogen baby endnu. Tilføj først Baby Tracker-integrationen.",
+    save: "Gem",
+    cancel: "Annuller",
+    delete: "Slet",
+    undo: "Fortryd",
+    next: "næste",
+    "diaper.wet": "Våd",
+    "diaper.dirty": "Beskidt",
+    "diaper.both": "Begge",
+    "side.left": "Venstre",
+    "side.right": "Højre",
+    "side.bottle": "Flaske",
+    "undo.diaper": "Ble registreret",
+    "undo.feeding": "Måltid registreret",
+    "undo.sleep": "Faldt i søvn",
+    "undo.wake": "Vågnede",
+    "undo.add_sleep": "Søvn tilføjet",
+    "undo.update_sleep": "Søvn ændret",
+    "undo.delete": "Registrering slettet",
+    "undo.growth": "Måling registreret",
+    "undo.delete_growth": "Måling slettet",
+    "undo.milestone": "Milepæl gemt",
+    "undo.clear_milestone": "Milepæl nulstillet",
+    "undo.add_milestone": "Milepæl tilføjet",
+    "undo.delete_milestone": "Milepæl slettet",
+    "undo.saved": "Gemt",
+    "category.movement": "Bevægelse",
+    "category.communication": "Kommunikation",
+    "category.social": "Socialt",
+    "category.firsts": "Første gange",
+    "category.custom": "Dine milepæle",
+    "part.header": "Overskrift (navn og dagens antal)",
+    "part.tiles": "Felter for ble / måltid / søvn",
+    "part.buttons": "Hurtigknapper",
+    "part.undo": "Fortryd-banner",
+    "part.summary": "Oversigt over nat / dag",
+    "part.trends": "Tendenser",
+    "part.nights": "Nattesøvn",
+    "part.timeline": "Søvntidslinje",
+    "part.log": "Log",
+    "part.growth": "Vækst (vægt og længde)",
+    "part.milestones": "Milepæle",
+    "button.sleep": "Søvn",
+    "button.diaper_wet": "Våd",
+    "button.diaper_dirty": "Beskidt",
+    "button.diaper_both": "Begge",
+    "button.feed_left": "Venstre",
+    "button.feed_right": "Højre",
+    "button.feed_bottle": "Flaske",
+    "button.undo": "Fortryd",
+    "legend.asleep": "Sover",
+    "legend.awake": "Vågen",
+    "legend.average": "Gennemsnit",
+    "tl.title": "Søvntidslinje",
+    "tl.title_avg": "Søvntidslinje (gennemsnit over {n} dage)",
+    "tl.day": "{label}: {value} søvn",
+    "tl.avg": "{label}: {value} søvn pr. dag i gennemsnit",
+    "tl.darker": "Mørkere = sov på flere af de {n} dage",
+    "nights.title": "Nattesøvn",
+    "nights.tip_asleep": "{h} søvn",
+    "nights.tip_awake": "{h} vågen",
+    "nights.so_far": " (indtil videre)",
+    "nights.none": "Ingen afsluttede nætter med registreret søvn endnu.",
+    "nights.avg": "<b>{h}</b> søvn i gennemsnit",
+    "nights.wakes": "{n} opvågninger pr. nat",
+    "nights.window": "Nat {range}",
+    "axis.months": "{n} md",
+    "axis.years": "{n} år",
+    "log.title": "Log",
+    "log.diaper": "Ble: {type}",
+    "log.feeding": "Måltid: {sides}{amount}",
+    "log.sleep": "Søvn {duration} ({from}–{to})",
+    "log.confirm": "Slet \"{text}\"?",
+    "tile.diaper": "Ble",
+    "tile.feeding": "Måltid",
+    "tile.sleeping": "Sover",
+    "tile.awake": "Vågen",
+    "tile.asleep_today": "{h} søvn i dag",
+    "tile.woke_up": "Vågnede",
+    "tile.fell_asleep": "Faldt i søvn",
+    "tile.at": "{what} kl. {time}",
+    "bottle.amount": "Mængde (ml, valgfri)",
+    "bottle.log": "Registrer flaske",
+    "qb.sleeping": "Sover 😴",
+    "qb.asleep_for": "Sovet i {time} — tryk, når den vågner",
+    "qb.tap_wake": "Tryk, når den vågner",
+    "qb.awake": "Vågen ☀️",
+    "qb.awake_for": "Vågen i {time} — tryk, når den sover",
+    "qb.tap_sleep": "Tryk, når den sover",
+    "qb.undo": "↩️ Fortryd",
+    "qb.undo_sub": "{label} · tryk inden for {seconds}",
+    "qb.same_feeding": "samme måltid",
+    "growth.title": "Vækst",
+    "growth.weight": "Vægt",
+    "growth.length": "Længde",
+    "growth.none": "Ingen målinger endnu",
+    "growth.none_full": "Ingen målinger endnu.",
+    "growth.date": "Dato",
+    "growth.add": "Tilføj måling",
+    "growth.list": "Målinger",
+    "growth.confirm": "Slet målingen{text}?",
+    "ms.title": "Milepæle",
+    "ms.most_by": "De fleste inden {age}",
+    "ms.around": "Omkring {age}",
+    "ms.reached_on_date": "Nået den {date}",
+    "ms.cdc": "De fleste børn inden {age} (CDC)",
+    "ms.typical": "Typisk omkring {age}",
+    "ms.note": "Note: {note}",
+    "ms.reached_on": "Nået den",
+    "ms.save_date": "Gem dato",
+    "ms.reached": "Nået",
+    "ms.not_reached": "Ikke nået",
+    "ms.up_next": "Næste",
+    "ms.fewer": "Vis færre",
+    "ms.more": "Vis {n} mere",
+    "ms.collapse_all": "Fold alle sammen",
+    "ms.expand_all": "Fold alle ud",
+    "ms.add": "Tilføj",
+    "ms.confirm": "Slet \"{name}\"?",
+    "ms.this": "denne milepæl",
+    "dlg.title": "Tilføj milepæl",
+    "dlg.what": "Hvad gjorde {name}?",
+    "dlg.the_baby": "babyen",
+    "dlg.placeholder": "f.eks. ruller rundt, første svømmetur",
+    "dlg.note": "Note",
+    "dlg.optional": "Valgfri",
+    "dlg.hint": "Ryd datoen for at tilføje den som ikke nået endnu.",
+    "dlg.add_new": "Tilføj som ny",
+    "dlg.add_named": "Tilføj “{name}” som ny",
+    "dlg.reached": "Nået {date}",
+    "sum.last_night": "I nat",
+    "sum.today": "I dag",
+    "sum.daytime": "Om dagen",
+    "sum.avg": "gns. {h}",
+    "trends.title": "Seneste {n} dage",
+    "trends.diapers": "Bleer",
+    "trends.feedings": "Måltider",
+    "trends.sleep": "Søvn (timer)",
+    "ed.baby": "Baby",
+    "ed.first_baby": "Første baby",
+    "ed.language": "Sprog",
+    "ed.language_auto": "Automatisk (Home Assistant)",
+    "ed.parts": "Dele",
+    "ed.undo_hint": "Skjult fortryd-banner: det vises stadig over den første del med knapper / felter, når en handling kan fortrydes, medmindre hurtigknapperne har en Fortryd-knap.",
+    "ed.buttons": "Hurtigknapper",
+    "ed.buttons_hint": "Navn, ikon og farve er valgfrie. Farver kan være Home Assistant-navne (f.eks. light-blue) eller CSS-farver.",
+    "ed.name": "Navn",
+    "ed.up": "Flyt op",
+    "ed.down": "Flyt ned",
+    "ed.per_row": "Knapper pr. række",
+    "ed.options": "Indstillinger",
+    "ed.tl_days": "Dage i tidslinjen",
+    "ed.tl_group": "Dage pr. linje i tidslinjen",
+    "ed.every_day": "Hver dag",
+    "ed.average_of": "Gennemsnit af {n} dage",
+    "ed.tl_start": "Linjerne i tidslinjen starter kl.",
+    "ed.nights": "Viste nætter",
+    "ed.night_from": "Nat fra",
+    "ed.to": "til",
+    "ed.night_hint": "Lad nattetiderne være tomme for at bruge integrationens indstillinger for Natten starter / Natten slutter.",
+    "ed.log_entries": "Linjer i loggen",
+    "ed.units": "Enheder for vækst",
+    "ed.metric": "Metrisk (kg, cm)",
+    "ed.imperial": "Imperial (lb + oz, in)",
+    "ed.growth_entries": "Målinger vist under vækstkurverne",
+    "ed.growth_list": "Liste over målinger",
+    "ed.collapsed": "Foldet sammen",
+    "ed.expanded": "Foldet ud",
+    "ed.days": "Dages historik",
+  },
+};
+export const LANGUAGES = { en: "English", da: "Dansk" };
+const LOCALES = { en: [], da: "da-DK" }; // English keeps the browser's own date format
+
+// The language being rendered: set by each card (and the editor) before it renders.
+let LANG = "en";
+let LOCALE = [];
+
+/** Use a language ("en", "da"; anything else falls back to English). */
+export function setLanguage(lang) {
+  LANG = Object.hasOwn(I18N, lang) ? lang : "en";
+  LOCALE = LOCALES[LANG];
+}
+
+/** The language for a card: its `language` option, else the Home Assistant user's language. */
+export function cardLanguage(config, hass) {
+  const wanted = config?.language && config.language !== "auto" ? config.language : hass?.locale?.language || hass?.language;
+  const code = String(wanted || "en").toLowerCase().split(/[-_]/)[0];
+  return Object.hasOwn(I18N, code) ? code : "en";
+}
+
+/** A text in the current language, with {placeholders} filled in. */
+export function t(key, vars) {
+  const text = I18N[LANG][key] ?? I18N.en[key] ?? key;
+  return vars ? text.replace(/\{(\w+)\}/g, (match, name) => (name in vars ? String(vars[name]) : match)) : text;
+}
+
+/** "3 days" / "1 day" (in the current language). */
+function tn(n, key) {
+  const [one, many] = I18N[LANG][`n.${key}`] ?? I18N.en[`n.${key}`];
+  return `${n ?? "–"} ${n === 1 ? one : many}`;
+}
+
+/** A number with a fixed number of decimals, with the language's decimal separator. */
+export function num(value, decimals) {
+  const fixed = Number(value).toFixed(decimals);
+  return LANG === "en" ? fixed : fixed.replace(".", ",");
+}
+
+/** An object whose properties are translated texts: keys[i] -> t(`${prefix}.${keys[i]}`). */
+function translated(keys, prefix) {
+  return Object.defineProperties(
+    {},
+    Object.fromEntries(keys.map((key) => [key, { get: () => t(`${prefix}.${key}`), enumerable: true }]))
+  );
+}
+
 /** "2h 05m" for a number of milliseconds. */
 export function formatDuration(ms) {
   const minutes = Math.max(0, Math.floor(ms / 60000));
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
+  return `${Math.floor(minutes / 60)}${t("unit.h")} ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
-const plural = (n, one, many) => `${n ?? "–"} ${n === 1 ? one : many}`;
-
-const hours = (h) => (h === null || h === undefined ? "–" : `${Number(h).toFixed(1)} h`);
+const hours = (h) => (h === null || h === undefined ? "–" : `${num(h, 1)} ${t("unit.h")}`);
 
 function startOfDay(date) {
   const d = new Date(date);
@@ -342,13 +738,13 @@ function timelineGradient(row) {
 function timelineLabel(row, now) {
   if (row.days === 1) {
     const diff = Math.round((startOfDay(now) - startOfDay(row.start)) / 86400000);
-    if (diff === 0) return "Today";
-    return row.start.toLocaleDateString([], { weekday: "short", day: "numeric" });
+    if (diff === 0) return t("today");
+    return row.start.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric" });
   }
   // Lines are labelled by the dates their days start on.
   const last = new Date(row.end);
   last.setDate(last.getDate() - 1);
-  return new Intl.DateTimeFormat([], { day: "numeric", month: "short" }).formatRange(row.start, last);
+  return new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short" }).formatRange(row.start, last);
 }
 
 function timelineHtml(rows, settings, now) {
@@ -361,17 +757,17 @@ function timelineHtml(rows, settings, now) {
   const lines = rows
     .map((row) => {
       const label = timelineLabel(row, now);
-      const value = row.hours === null ? "–" : `${row.hours.toFixed(1)} h`;
-      const title = row.days === 1 ? `${label}: ${value} asleep` : `${label}: ${value} asleep per day on average`;
+      const value = hours(row.hours);
+      const title = t(row.days === 1 ? "tl.day" : "tl.avg", { label, value });
       return `<div class="tl-row" title="${esc(title)}"><span class="tl-label">${esc(label)}</span>
         <span class="tl-bar" style="background:${timelineGradient(row)}"></span><span class="tl-value">${value}</span></div>`;
     })
     .join("");
   const legendItems = [
-    ["Asleep", "var(--bt-sleep)"],
-    ["Awake", "var(--bt-awake)"],
+    [t("legend.asleep"), "var(--bt-sleep)"],
+    [t("legend.awake"), "var(--bt-awake)"],
   ];
-  const note = settings.group > 1 ? `<span class="tl-note">Darker = asleep on more of the ${settings.group} days</span>` : "";
+  const note = settings.group > 1 ? `<span class="tl-note">${esc(t("tl.darker", { n: settings.group }))}</span>` : "";
   return `<div class="timeline${settings.group > 1 ? " grouped" : ""}">
       <div class="tl-row tl-axis"><span class="tl-label"></span><span class="tl-ticks">${ticks}</span><span class="tl-value"></span></div>
       ${lines}
@@ -480,7 +876,7 @@ function nightsHtml(nights, settings) {
   }
   nights.forEach((n, i) => {
     const x = left + i * slot + (slot - barW) / 2;
-    const tip = `${n.start.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}: ${n.asleep.toFixed(1)} h asleep, ${n.awake.toFixed(1)} h awake, ${n.wakes} wake-up${n.wakes === 1 ? "" : "s"}${n.done ? "" : " (so far)"}`;
+    const tip = `${n.start.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" })}: ${t("nights.tip_asleep", { h: hours(n.asleep) })}, ${t("nights.tip_awake", { h: hours(n.awake) })}, ${tn(n.wakes, "wake")}${n.done ? "" : t("nights.so_far")}`;
     svg += `<g><title>${esc(tip)}</title>`;
     if (n.awake > 0) {
       svg += `<rect x="${x.toFixed(1)}" y="${y(n.asleep + n.awake).toFixed(1)}" width="${barW.toFixed(1)}" height="${(n.awake * scale).toFixed(1)}" rx="2" fill="var(--bt-awake)"/>`;
@@ -490,25 +886,25 @@ function nightsHtml(nights, settings) {
     }
     svg += `</g>`;
     if (nights.length <= 14 && n.asleep > 0) {
-      svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y(n.asleep + n.awake) - 3).toFixed(1)}" class="value">${n.asleep.toFixed(1)}</text>`;
+      svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y(n.asleep + n.awake) - 3).toFixed(1)}" class="value">${num(n.asleep, 1)}</text>`;
     }
     if (i % every === 0 || i === nights.length - 1) {
-      const label = nights.length <= 7 ? n.start.toLocaleDateString([], { weekday: "short" }) : String(n.start.getDate());
+      const label = nights.length <= 7 ? n.start.toLocaleDateString(LOCALE, { weekday: "short" }) : String(n.start.getDate());
       svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${height - 4}" class="axis">${esc(label)}</text>`;
     }
   });
   const done = nights.filter((n) => n.done && n.asleep > 0);
-  let summary = `<span>No finished nights with sleep logged yet.</span>`;
+  let summary = `<span>${esc(t("nights.none"))}</span>`;
   if (done.length) {
     const avg = done.reduce((t, n) => t + n.asleep, 0) / done.length;
     const avgWakes = done.reduce((t, n) => t + n.wakes, 0) / done.length;
     svg += `<line x1="${left}" x2="${width}" y1="${y(avg).toFixed(1)}" y2="${y(avg).toFixed(1)}" class="avg"/>`;
-    summary = `<span><b>${avg.toFixed(1)} h</b> asleep on average</span><span>${avgWakes.toFixed(1)} wake-ups per night</span>`;
+    summary = `<span>${t("nights.avg", { h: esc(hours(avg)) })}</span><span>${esc(t("nights.wakes", { n: num(avgWakes, 1) }))}</span>`;
   }
   const range = `${formatClock(settings.start)}–${formatClock(settings.end)}`;
-  return `<div class="night-summary">${summary}<span>Night ${range}</span></div>
+  return `<div class="night-summary">${summary}<span>${esc(t("nights.window", { range }))}</span></div>
     <svg class="nights" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${svg}</svg>
-    <div class="legend"><span><i style="background:var(--bt-sleep)"></i>Asleep</span><span><i style="background:var(--bt-awake)"></i>Awake</span><span><i class="dash"></i>Average</span></div>`;
+    <div class="legend"><span><i style="background:var(--bt-sleep)"></i>${t("legend.asleep")}</span><span><i style="background:var(--bt-awake)"></i>${t("legend.awake")}</span><span><i class="dash"></i>${t("legend.average")}</span></div>`;
 }
 
 /**
@@ -623,7 +1019,7 @@ export function todayIso(now = new Date()) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-const dateLabel = (iso) => parseDay(iso).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+const dateLabel = (iso) => parseDay(iso).toLocaleDateString(LOCALE, { day: "numeric", month: "short", year: "numeric" });
 
 /** A number typed in a form ("4,25" works too), or null. */
 const parseNumber = (value) => {
@@ -658,15 +1054,15 @@ export function formatWeight(kg, units) {
     const tenthsOfOunce = Math.round((kg / KG_PER_LB) * 160);
     const lb = Math.floor(tenthsOfOunce / 160);
     const oz = (tenthsOfOunce - lb * 160) / 10;
-    return `${lb} lb ${oz.toFixed(1).replace(/\.0$/, "")} oz`;
+    return `${lb} lb ${num(oz, 1).replace(/[.,]0$/, "")} oz`;
   }
-  return `${Number(kg).toFixed(2)} kg`;
+  return `${num(kg, 2)} kg`;
 }
 
 /** "55.5 cm" or "21.9 in"; "" without a value. */
 export function formatLength(cm, units) {
   if (cm === null || cm === undefined) return "";
-  return units === "imperial" ? `${(cm / CM_PER_INCH).toFixed(1)} in` : `${Number(cm).toFixed(1)} cm`;
+  return units === "imperial" ? `${num(cm / CM_PER_INCH, 1)} in` : `${num(cm, 1)} cm`;
 }
 
 /** Age on a date: "at birth", "3 days", "5 weeks", "4 months", "1 year 3 months"; "" if unknown. */
@@ -676,17 +1072,22 @@ export function formatAge(birthIso, dateIso) {
   const day = parseDay(dateIso);
   const days = Math.round((day - birth) / 86400000);
   if (days < 0) return "";
-  if (days === 0) return "at birth";
-  if (days < 14) return plural(days, "day", "days");
-  if (days < 7 * 9) return plural(Math.floor(days / 7), "week", "weeks");
+  if (days === 0) return t("age.birth");
+  if (days < 14) return tn(days, "day");
+  if (days < 7 * 9) return tn(Math.floor(days / 7), "week");
   const months =
     (day.getFullYear() - birth.getFullYear()) * 12 + day.getMonth() - birth.getMonth() - (day.getDate() < birth.getDate() ? 1 : 0);
-  if (months < 24) return plural(months, "month", "months");
+  if (months < 24) return tn(months, "month");
   const years = Math.floor(months / 12);
-  return months % 12 ? `${plural(years, "year", "years")} ${plural(months % 12, "month", "months")}` : plural(years, "year", "years");
+  return months % 12 ? `${tn(years, "year")} ${tn(months % 12, "month")}` : tn(years, "year");
 }
 
-const monthsLabel = (m) => (m < 24 || m % 12 ? plural(m, "month", "months") : plural(m / 12, "year", "years"));
+const monthsLabel = (m) => (m < 24 || m % 12 ? tn(m, "month") : tn(m / 12, "year"));
+
+/** A milestone's name in the current language (built-in ones are translated; your own aren't). */
+export function milestoneName(m) {
+  return m?.i18n?.[LANG]?.name || m?.name || "";
+}
 
 /**
  * Milestones in timeline order: reached ones by the date reached (oldest first),
@@ -694,7 +1095,7 @@ const monthsLabel = (m) => (m < 24 || m % 12 ? plural(m, "month", "months") : pl
  */
 export function milestoneTimeline(milestones) {
   const list = milestones || [];
-  const reached = list.filter((m) => m.date).sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+  const reached = list.filter((m) => m.date).sort((a, b) => a.date.localeCompare(b.date) || milestoneName(a).localeCompare(milestoneName(b)));
   const upcoming = list
     .filter((m) => !m.date)
     .map((m, index) => ({ m, index }))
@@ -703,7 +1104,10 @@ export function milestoneTimeline(milestones) {
   return { reached, upcoming };
 }
 
-const STOP_WORDS = new Set(["a", "an", "the", "to", "of", "on", "in", "at", "with", "and", "from", "for", "by", "his", "her", "their", "own", "baby", "said", "says", "say"]);
+const STOP_WORDS = new Set([
+  ...["a", "an", "the", "to", "of", "on", "in", "at", "with", "and", "from", "for", "by", "his", "her", "their", "own", "baby", "said", "says", "say"],
+  ...["en", "et", "den", "det", "de", "og", "i", "pa", "til", "af", "med", "sin", "sit", "sine", "hans", "hendes", "babyen", "sagde", "siger"],
+]);
 
 /** Lower case, without accents or punctuation. */
 export function normalizeText(text) {
@@ -744,7 +1148,11 @@ export function matchMilestones(query, milestones, limit = 6) {
   if (!tokens.length) return [];
   const scored = [];
   for (const m of milestones || []) {
-    const texts = [m.name, ...(m.tags || [])].map(normalizeText);
+    // Names and tags in every language, so English words work in Danish and the other way round.
+    const translations = Object.values(m.i18n || {});
+    const texts = [m.name, ...(m.tags || []), ...translations.flatMap((x) => [x.name, ...(x.tags || [])])]
+      .filter(Boolean)
+      .map(normalizeText);
     const words = [...new Set(texts.join(" ").split(" ").filter(Boolean).map(stem))];
     let score = 0;
     let matched = 0;
@@ -767,7 +1175,7 @@ export function matchMilestones(query, milestones, limit = 6) {
   }
   // Typo matches only count when nothing matches as typed ("walking" isn't "talking").
   if (scored.some((x) => !x.fuzzy)) scored.splice(0, scored.length, ...scored.filter((x) => !x.fuzzy));
-  scored.sort((a, b) => b.score - a.score || Number(Boolean(a.m.date)) - Number(Boolean(b.m.date)) || a.m.name.localeCompare(b.m.name));
+  scored.sort((a, b) => b.score - a.score || Number(Boolean(a.m.date)) - Number(Boolean(b.m.date)) || milestoneName(a.m).localeCompare(milestoneName(b.m)));
   return scored.slice(0, limit).map(({ m }) => m);
 }
 
@@ -925,7 +1333,7 @@ function niceStep(range, count) {
 
 /** Line chart of growth points over age (months) or dates. */
 function growthChart(points, { byAge, unit, decimals }) {
-  if (!points.length) return `<div class="message">No measurements yet.</div>`;
+  if (!points.length) return `<div class="message">${esc(t("growth.none_full"))}</div>`;
   const width = 300;
   const height = 150;
   const left = 34;
@@ -956,7 +1364,7 @@ function growthChart(points, { byAge, unit, decimals }) {
   if (byAge) {
     const step = [1, 2, 3, 6, 12, 24, 36].find((s) => (x1 - x0) / s <= 8) ?? 48;
     for (let m = 0; m <= x1; m += step) {
-      const label = m >= 24 && m % 12 === 0 ? `${m / 12} y` : `${m} m`;
+      const label = m >= 24 && m % 12 === 0 ? t("axis.years", { n: m / 12 }) : t("axis.months", { n: m });
       svg += `<text x="${sx(m).toFixed(1)}" y="${height - 4}" class="axis">${label}</text>`;
     }
   } else {
@@ -966,13 +1374,13 @@ function growthChart(points, { byAge, unit, decimals }) {
     const tick = new Date(start.getFullYear(), start.getMonth() + 1, 1);
     for (; tick.getTime() / 86400000 <= x1; tick.setMonth(tick.getMonth() + step)) {
       const x = sx(tick.getTime() / 86400000);
-      const label = tick.toLocaleDateString([], step >= 12 ? { year: "numeric" } : { month: "short", year: "2-digit" });
+      const label = tick.toLocaleDateString(LOCALE, step >= 12 ? { year: "numeric" } : { month: "short", year: "2-digit" });
       svg += `<text x="${x.toFixed(1)}" y="${height - 4}" class="axis">${esc(label)}</text>`;
     }
   }
   svg += `<polyline class="series" points="${points.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ")}"/>`;
   for (const p of points) {
-    svg += `<circle class="point" cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3"><title>${esc(dateLabel(p.date))}: ${p.y.toFixed(decimals)} ${unit}</title></circle>`;
+    svg += `<circle class="point" cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3"><title>${esc(dateLabel(p.date))}: ${num(p.y, decimals)} ${unit}</title></circle>`;
   }
   return `<svg class="growth-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${svg}</svg>`;
 }
@@ -980,26 +1388,26 @@ function growthChart(points, { byAge, unit, decimals }) {
 function describe(e) {
   if (e.kind === "diaper") {
     const d = DIAPER[e.diaper_type] || DIAPER.wet;
-    return { emoji: d.emoji, text: `Diaper: ${d.label}` };
+    return { emoji: d.emoji, text: t("log.diaper", { type: d.label }) };
   }
   if (e.kind === "feeding") {
     const sides = (e.sides || []).map((s) => (SIDES[s.side] || {}).label || s.side);
     const amount = e.amount_ml ? ` · ${Math.round(e.amount_ml)} ml` : "";
-    return { emoji: "🍼", text: `Feeding: ${sides.join(" → ")}${amount}` };
+    return { emoji: "🍼", text: t("log.feeding", { sides: sides.join(" → "), amount }) };
   }
   const ms = new Date(e.end) - new Date(e.start);
-  return { emoji: "😴", text: `Sleep ${formatDuration(ms)} (${clock(e.start)}–${clock(e.end)})` };
+  return { emoji: "😴", text: t("log.sleep", { duration: formatDuration(ms), from: clock(e.start), to: clock(e.end) }) };
 }
 
 function clock(iso) {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
 }
 
 function dayLabel(date, now = new Date()) {
   const diff = Math.round((startOfDay(now) - startOfDay(date)) / 86400000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  return date.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  if (diff === 0) return t("today");
+  if (diff === 1) return t("yesterday");
+  return date.toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" });
 }
 
 function stackedBars(buckets, keys, colors, valueFn, { unit = "", decimals = 0 } = {}) {
@@ -1028,7 +1436,7 @@ function stackedBars(buckets, keys, colors, valueFn, { unit = "", decimals = 0 }
     if (Number(total.toFixed(decimals)) > 0) {
       bars += `<text x="${(x + barWidth / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" class="value">${total.toFixed(decimals)}</text>`;
     }
-    const label = b.start.toLocaleDateString([], { weekday: "narrow" });
+    const label = b.start.toLocaleDateString(LOCALE, { weekday: "narrow" });
     bars += `<text x="${(x + barWidth / 2).toFixed(1)}" y="${height - 4}" class="axis">${esc(label)}</text>`;
   });
   return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${bars}</svg>`;
@@ -1069,6 +1477,11 @@ class BabyTrackerCard extends HTMLElement {
 
   static getStubConfig() {
     return {};
+  }
+
+  /** Render in this card's language (its option, or the Home Assistant user's language). */
+  _applyLanguage() {
+    setLanguage(cardLanguage(this._config, this._hass));
   }
 
   setConfig(config) {
@@ -1127,7 +1540,7 @@ class BabyTrackerCard extends HTMLElement {
       let entryId = this._config.entry_id;
       if (!entryId) {
         const babies = await this._hass.callWS({ type: `${DOMAIN}/babies` });
-        if (!babies.length) throw new Error("No baby has been added yet. Add the Baby Tracker integration first.");
+        if (!babies.length) throw new Error(t("no_baby"));
         entryId = babies[0].entry_id;
         defaultEntryId = entryId;
       }
@@ -1267,6 +1680,7 @@ class BabyTrackerCard extends HTMLElement {
   _tick() {
     const root = this.shadowRoot;
     if (!root || !this._data) return;
+    this._applyLanguage();
     const now = Date.now();
     root.querySelectorAll("[data-since]").forEach((el) => {
       el.textContent = formatDuration(now - new Date(el.dataset.since));
@@ -1280,6 +1694,7 @@ class BabyTrackerCard extends HTMLElement {
   _handleClick(ev) {
     const target = ev.target.closest("[data-action]");
     if (!target) return;
+    this._applyLanguage();
     const { action, value } = target.dataset;
     switch (action) {
       case "diaper":
@@ -1328,7 +1743,7 @@ class BabyTrackerCard extends HTMLElement {
         const m = (this._data?.growth || []).find((g) => g.id === value);
         const units = this._config.units;
         const text = m ? [formatWeight(m.weight_kg, units), formatLength(m.length_cm, units)].filter(Boolean).join(", ") : "";
-        if (window.confirm(`Delete the measurement${text ? ` (${text})` : ""}?`)) this._call("delete_growth", { event_id: value });
+        if (window.confirm(t("growth.confirm", { text: text ? ` (${text})` : "" }))) this._call("delete_growth", { event_id: value });
         break;
       }
       case "growth-list":
@@ -1382,7 +1797,7 @@ class BabyTrackerCard extends HTMLElement {
         break;
       case "milestone-delete": {
         const m = (this._data?.milestones || []).find((x) => x.key === value);
-        if (window.confirm(`Delete "${m ? m.name : "this milestone"}"?`)) {
+        if (window.confirm(t("ms.confirm", { name: m ? milestoneName(m) : t("ms.this") }))) {
           this._msOpen.delete(value);
           this._call("delete_milestone", { milestone: value });
         }
@@ -1393,8 +1808,8 @@ class BabyTrackerCard extends HTMLElement {
         break;
       case "delete": {
         const event = (this._data?.events || []).find((e) => e.id === value);
-        const text = event ? describe(event).text : "this entry";
-        if (window.confirm(`Delete "${text}"?`)) this._call("delete_event", { event_id: value });
+        const text = event ? describe(event).text : "";
+        if (window.confirm(t("log.confirm", { text }))) this._call("delete_event", { event_id: value });
         break;
       }
       default:
@@ -1486,6 +1901,7 @@ class BabyTrackerCard extends HTMLElement {
    * page, so every other part is updated and that one waits until the field loses focus.
    */
   _backgroundRender() {
+    this._applyLanguage();
     const active = this._fieldFocused() ? this.shadowRoot.activeElement : null;
     if (!active) {
       this._render();
@@ -1522,6 +1938,7 @@ class BabyTrackerCard extends HTMLElement {
   _render() {
     if (!this.shadowRoot || !this._config) return;
     this._pendingRender = false;
+    this._applyLanguage();
     const card = this._ensureShell();
     // Right layout from the first frame (the ResizeObserver follows later changes).
     if (!this._widthKnown) this._setWidthClasses(this._contentWidth());
@@ -1538,7 +1955,7 @@ class BabyTrackerCard extends HTMLElement {
     if (this._error) {
       card.innerHTML = `<div class="message error">${esc(this._error)}</div>`;
     } else if (!this._data) {
-      card.innerHTML = `<div class="message">Loading…</div>`;
+      card.innerHTML = `<div class="message">${esc(t("loading"))}</div>`;
     } else {
       card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
     }
@@ -1590,7 +2007,7 @@ class BabyTrackerCard extends HTMLElement {
     }
     const pending = this._sleepsError
       ? `<div class="message error">${esc(this._sleepsError)}</div>`
-      : `<div class="message">Loading…</div>`;
+      : `<div class="message">${esc(t("loading"))}</div>`;
 
     const parts = {
       header: () => this._headerHtml(d),
@@ -1603,15 +2020,14 @@ class BabyTrackerCard extends HTMLElement {
         const settings = nightSettings(cfg, d.settings);
         return `
         <div class="section">
-          <div class="section-title">Night sleep</div>
+          <div class="section-title">${esc(t("nights.title"))}</div>
           <div class="chart">${intervals ? nightsHtml(nightStats(intervals, settings, now), settings) : pending}</div>
         </div>`;
       },
       timeline: () => {
         const settings = timelineSettings(cfg);
         const content = intervals ? timelineHtml(timelineRows(intervals, settings, now), settings, now) : pending;
-        const title =
-          settings.group === 1 ? "Sleep timeline" : `Sleep timeline (${settings.group}-day averages)`;
+        const title = esc(settings.group === 1 ? t("tl.title") : t("tl.title_avg", { n: settings.group }));
         return `
         <div class="section">
           <div class="section-title">${title}</div>
@@ -1635,7 +2051,7 @@ class BabyTrackerCard extends HTMLElement {
 
   _bottleForm(source) {
     return this._bottleOpen === source
-      ? `<div class="bottle" data-submit="bottle-log"><input id="bottle-amount" type="number" inputmode="numeric" min="0" step="5" placeholder="Amount (ml, optional)"><button class="small primary" data-action="bottle-log">Log bottle</button><button class="small" data-action="bottle-cancel">Cancel</button></div>`
+      ? `<div class="bottle" data-submit="bottle-log"><input id="bottle-amount" type="number" inputmode="numeric" min="0" step="5" placeholder="${esc(t("bottle.amount"))}"><button class="small primary" data-action="bottle-log">${esc(t("bottle.log"))}</button><button class="small" data-action="bottle-cancel">${esc(t("cancel"))}</button></div>`
       : "";
   }
 
@@ -1644,8 +2060,8 @@ class BabyTrackerCard extends HTMLElement {
       <div class="header">
         <div class="name"><ha-icon icon="mdi:baby-face-outline"></ha-icon>${esc(d.name)}</div>
         <div class="chips">
-          <span class="chip">${plural(d.today.diapers.total, "diaper", "diapers")}</span>
-          <span class="chip">${plural(d.today.feedings.total, "feeding", "feedings")}</span>
+          <span class="chip">${esc(tn(d.today.diapers.total, "diaper"))}</span>
+          <span class="chip">${esc(tn(d.today.feedings.total, "feeding"))}</span>
           ${d.today.bottle_ml ? `<span class="chip">${Math.round(d.today.bottle_ml)} ml</span>` : ""}
         </div>
       </div>`;
@@ -1653,9 +2069,9 @@ class BabyTrackerCard extends HTMLElement {
 
   _undoHtml(d, now) {
     return d.undo
-      ? `<div class="undo"><ha-icon icon="mdi:check-circle"></ha-icon><span>${esc(UNDO_LABELS[d.undo.action] || "Saved")}</span>
+      ? `<div class="undo"><ha-icon icon="mdi:check-circle"></ha-icon><span>${esc(UNDO_LABELS[d.undo.action] || t("undo.saved"))}</span>
           <span class="countdown" data-undo-expires="${esc(d.undo.expires)}">${Math.max(0, Math.round((new Date(d.undo.expires) - now) / 1000))}s</span>
-          <button class="small" data-action="undo"><ha-icon icon="mdi:undo-variant"></ha-icon>Undo</button></div>`
+          <button class="small" data-action="undo"><ha-icon icon="mdi:undo-variant"></ha-icon>${esc(t("undo"))}</button></div>`
       : "";
   }
 
@@ -1663,21 +2079,21 @@ class BabyTrackerCard extends HTMLElement {
     const lastDiaper = d.last_diaper;
     const lastFeeding = d.last_feeding;
     const diaperSub = lastDiaper
-      ? `${DIAPER[lastDiaper.diaper_type]?.emoji || ""} ${esc(DIAPER[lastDiaper.diaper_type]?.label || "")} at ${clock(lastDiaper.start)}`
-      : "Nothing logged yet";
+      ? `${DIAPER[lastDiaper.diaper_type]?.emoji || ""} ${esc(t("tile.at", { what: DIAPER[lastDiaper.diaper_type]?.label || "", time: clock(lastDiaper.start) }))}`
+      : esc(t("nothing"));
     const feedingSides = lastFeeding ? (lastFeeding.sides || []).map((s) => SIDES[s.side]?.label || s.side).join(" → ") : "";
     const feedingSub = lastFeeding
-      ? `${esc(feedingSides)}${lastFeeding.amount_ml ? ` · ${Math.round(lastFeeding.amount_ml)} ml` : ""} at ${clock(lastFeeding.start)}`
-      : "Nothing logged yet";
+      ? esc(t("tile.at", { what: `${feedingSides}${lastFeeding.amount_ml ? ` · ${Math.round(lastFeeding.amount_ml)} ml` : ""}`, time: clock(lastFeeding.start) }))
+      : esc(t("nothing"));
 
     const diaperButtons = Object.entries(DIAPER)
-      .map(([key, v]) => `<button class="action" style="--accent:${v.color}" data-action="diaper" data-value="${key}"><span class="emoji">${v.emoji}</span>${v.label}</button>`)
+      .map(([key, v]) => `<button class="action" style="--accent:${v.color}" data-action="diaper" data-value="${key}"><span class="emoji">${v.emoji}</span>${esc(v.label)}</button>`)
       .join("");
     const feedButtons = Object.entries(SIDES)
       .map(([key, v]) => {
         const next = key === d.next_side ? " next" : "";
         const active = key === "bottle" && this._bottleOpen === "tiles" ? " active" : "";
-        return `<button class="action${next}${active}" style="--accent:${v.color}" data-action="feed" data-value="${key}" data-source="tiles"><ha-icon icon="${v.icon}"></ha-icon>${v.label}${next ? '<span class="badge">next</span>' : ""}</button>`;
+        return `<button class="action${next}${active}" style="--accent:${v.color}" data-action="feed" data-value="${key}" data-source="tiles"><ha-icon icon="${v.icon}"></ha-icon>${esc(v.label)}${next ? `<span class="badge">${esc(t("next"))}</span>` : ""}</button>`;
       })
       .join("");
 
@@ -1685,23 +2101,23 @@ class BabyTrackerCard extends HTMLElement {
     const sleepSince = sleeping ? d.sleep_start : d.last_wake;
     const sleepTile = `
       <div class="tile sleep${sleeping ? " sleeping" : ""}">
-        <div class="tile-head"><ha-icon icon="${sleeping ? "mdi:sleep" : "mdi:weather-sunny"}"></ha-icon>${sleeping ? "Sleeping" : "Awake"}</div>
+        <div class="tile-head"><ha-icon icon="${sleeping ? "mdi:sleep" : "mdi:weather-sunny"}"></ha-icon>${esc(t(sleeping ? "tile.sleeping" : "tile.awake"))}</div>
         <div class="big">${sleepSince ? since(sleepSince) : "–"}</div>
-        <div class="sub">${hours(d.today.sleep_hours)} asleep today</div>
+        <div class="sub">${esc(t("tile.asleep_today", { h: hours(d.today.sleep_hours) }))}</div>
         <div class="buttons"><button class="action wide" style="--accent:${sleeping ? SLEEP_COLORS.day : SLEEP_COLORS.night}" data-action="sleep">
-          <span class="emoji">${sleeping ? "☀️" : "😴"}</span>${sleeping ? "Woke up" : "Fell asleep"}</button></div>
+          <span class="emoji">${sleeping ? "☀️" : "😴"}</span>${esc(t(sleeping ? "tile.woke_up" : "tile.fell_asleep"))}</button></div>
       </div>`;
 
     return `
       <div class="tiles">
         <div class="tile">
-          <div class="tile-head"><ha-icon icon="mdi:human-baby-changing-table"></ha-icon>Diaper</div>
+          <div class="tile-head"><ha-icon icon="mdi:human-baby-changing-table"></ha-icon>${esc(t("tile.diaper"))}</div>
           <div class="big">${lastDiaper ? since(lastDiaper.start) : "–"}</div>
           <div class="sub">${diaperSub}</div>
           <div class="buttons">${diaperButtons}</div>
         </div>
         <div class="tile">
-          <div class="tile-head"><ha-icon icon="mdi:baby-bottle-outline"></ha-icon>Feeding</div>
+          <div class="tile-head"><ha-icon icon="mdi:baby-bottle-outline"></ha-icon>${esc(t("tile.feeding"))}</div>
           <div class="big">${lastFeeding ? since(lastFeeding.start) : "–"}</div>
           <div class="sub">${feedingSub}</div>
           <div class="buttons">${feedButtons}</div>
@@ -1733,28 +2149,28 @@ class BabyTrackerCard extends HTMLElement {
         if (b.action === "sleep") {
           action = "sleep";
           if (d.sleeping) {
-            name = b.name || "Sleeping 😴";
-            sub = d.sleep_start ? `Asleep for ${since(d.sleep_start)} — tap to wake` : "Tap to wake";
+            name = b.name || t("qb.sleeping");
+            sub = d.sleep_start ? t("qb.asleep_for", { time: since(d.sleep_start) }) : esc(t("qb.tap_wake"));
             classes = " on";
           } else {
-            name = b.name || "Awake ☀️";
+            name = b.name || t("qb.awake");
             icon = b.icon || "mdi:weather-sunny";
             color = b.color || "amber";
-            sub = d.last_wake ? `Awake for ${since(d.last_wake)} — tap to start sleep` : "Tap to start sleep";
+            sub = d.last_wake ? t("qb.awake_for", { time: since(d.last_wake) }) : esc(t("qb.tap_sleep"));
           }
         } else if (b.action === "undo") {
           if (!d.undo) return "";
           action = "undo";
-          name = b.name || "↩️ Undo";
+          name = b.name || t("qb.undo");
           const left = Math.max(0, Math.round((new Date(d.undo.expires) - now) / 1000));
-          sub = `${esc(UNDO_LABELS[d.undo.action] || "Saved")} · tap within <span data-undo-expires="${esc(d.undo.expires)}">${left}s</span>`;
+          sub = t("qb.undo_sub", { label: esc(UNDO_LABELS[d.undo.action] || t("undo.saved")), seconds: `<span data-undo-expires="${esc(d.undo.expires)}">${left}s</span>` });
         } else if (action === "feed") {
           if (value === d.next_side) {
             classes = " next";
-            badge = '<span class="badge">next</span>';
+            badge = `<span class="badge">${esc(t("next"))}</span>`;
           }
           if (value === "bottle" && this._bottleOpen === "buttons") classes += " active";
-          if (sameFeeding) sub = "same feeding";
+          if (sameFeeding) sub = esc(t("qb.same_feeding"));
         }
         // Wide buttons put the text next to the icon; narrow ones below it.
         const layout = b.columns >= 6 ? " wide" : "";
@@ -1774,17 +2190,17 @@ class BabyTrackerCard extends HTMLElement {
     const imperial = units === "imperial";
     const growth = d.growth || [];
     const latest = (field) => [...growth].reverse().find((g) => g[field] !== null && g[field] !== undefined);
-    const when = (g) => (g ? `${dateLabel(g.date)}${d.birth_date ? ` · ${formatAge(d.birth_date, g.date)}` : ""}` : "No measurements yet");
+    const when = (g) => (g ? `${dateLabel(g.date)}${d.birth_date ? ` · ${formatAge(d.birth_date, g.date)}` : ""}` : t("growth.none"));
     const weight = latest("weight_kg");
     const length = latest("length_cm");
     const byAge = Boolean(d.birth_date);
     const charts = [
-      ["Weight", "weight_kg", imperial ? "lb" : "kg", 2, "#26a69a"],
-      ["Length", "length_cm", imperial ? "in" : "cm", 1, "#5c6bc0"],
+      [t("growth.weight"), "weight_kg", imperial ? "lb" : "kg", 2, "#26a69a"],
+      [t("growth.length"), "length_cm", imperial ? "in" : "cm", 1, "#5c6bc0"],
     ]
       .map(
         ([title, field, unit, decimals, color]) =>
-          `<div class="chart" style="--accent:${color}"><div class="chart-title">${title} (${unit})</div>
+          `<div class="chart" style="--accent:${color}"><div class="chart-title">${esc(title)} (${unit})</div>
             ${growthChart(growthPoints(growth, field, d.birth_date, units), { byAge, unit, decimals })}</div>`
       )
       .join("");
@@ -1796,17 +2212,17 @@ class BabyTrackerCard extends HTMLElement {
       input(id, field, `type="number" inputmode="decimal" min="0" step="${step}" placeholder="${placeholder}"`);
     const form = this._growthOpen
       ? `<div class="form" data-submit="growth-save">
-          <label>Date ${input("growth-date", "date", `type="date" max="${todayIso()}"`)}</label>
+          <label>${esc(t("growth.date"))} ${input("growth-date", "date", `type="date" max="${todayIso()}"`)}</label>
           ${
             imperial
-              ? `<label>Weight<span class="pair">${number("growth-lb", "lb", "1", "lb")}${number("growth-oz", "oz", "0.1", "oz")}</span></label>
-                 <label>Length (in) ${number("growth-in", "inches", "0.1", "in")}</label>`
-              : `<label>Weight (kg) ${number("growth-weight", "weight", "0.01", "kg")}</label>
-                 <label>Length (cm) ${number("growth-cm", "cm", "0.1", "cm")}</label>`
+              ? `<label>${esc(t("growth.weight"))}<span class="pair">${number("growth-lb", "lb", "1", "lb")}${number("growth-oz", "oz", "0.1", "oz")}</span></label>
+                 <label>${esc(t("growth.length"))} (in) ${number("growth-in", "inches", "0.1", "in")}</label>`
+              : `<label>${esc(t("growth.weight"))} (kg) ${number("growth-weight", "weight", "0.01", "kg")}</label>
+                 <label>${esc(t("growth.length"))} (cm) ${number("growth-cm", "cm", "0.1", "cm")}</label>`
           }
-          <div class="actions"><button class="small primary" data-action="growth-save">Save</button><button class="small" data-action="growth-cancel">Cancel</button></div>
+          <div class="actions"><button class="small primary" data-action="growth-save">${esc(t("save"))}</button><button class="small" data-action="growth-cancel">${esc(t("cancel"))}</button></div>
         </div>`
-      : `<div class="form-toggle"><button class="small" data-action="growth-open"><ha-icon icon="mdi:plus"></ha-icon>Add measurement</button></div>`;
+      : `<div class="form-toggle"><button class="small" data-action="growth-open"><ha-icon icon="mdi:plus"></ha-icon>${esc(t("growth.add"))}</button></div>`;
 
     const shown = clampInt(this._config.growth_entries, 0, 100, 5);
     const listOpen = this._growthListIsOpen();
@@ -1816,18 +2232,18 @@ class BabyTrackerCard extends HTMLElement {
       .map((g) => {
         const values = [formatWeight(g.weight_kg, units), formatLength(g.length_cm, units)].filter(Boolean).join(" · ");
         return `<li><span class="emoji">📏</span><span class="text">${esc(values)}</span><span class="time">${esc(when(g))}</span>
-            <button class="icon" title="Delete" aria-label="Delete" data-action="growth-delete" data-value="${esc(g.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
+            <button class="icon" title="${esc(t("delete"))}" aria-label="${esc(t("delete"))}" data-action="growth-delete" data-value="${esc(g.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
       })
       .join("");
 
     return `
         <div class="section">
-          <div class="section-title">Growth</div>
+          <div class="section-title">${esc(t("growth.title"))}</div>
           <div class="growth-latest">
-            <div><div class="label"><ha-icon icon="mdi:scale-bathroom"></ha-icon>Weight</div>
+            <div><div class="label"><ha-icon icon="mdi:scale-bathroom"></ha-icon>${esc(t("growth.weight"))}</div>
               <div class="value">${weight ? esc(formatWeight(weight.weight_kg, units)) : "–"}</div>
               <div class="sub">${esc(when(weight))}</div></div>
-            <div><div class="label"><ha-icon icon="mdi:human-male-height"></ha-icon>Length</div>
+            <div><div class="label"><ha-icon icon="mdi:human-male-height"></ha-icon>${esc(t("growth.length"))}</div>
               <div class="value">${length ? esc(formatLength(length.length_cm, units)) : "–"}</div>
               <div class="sub">${esc(when(length))}</div></div>
           </div>
@@ -1836,7 +2252,7 @@ class BabyTrackerCard extends HTMLElement {
           ${
             growth.length && shown
               ? `<button class="collapse" data-action="growth-list" aria-expanded="${listOpen}">
-                  <ha-icon icon="mdi:chevron-${listOpen ? "up" : "down"}"></ha-icon>Measurements<span class="count">${growth.length}</span></button>`
+                  <ha-icon icon="mdi:chevron-${listOpen ? "up" : "down"}"></ha-icon>${esc(t("growth.list"))}<span class="count">${growth.length}</span></button>`
               : ""
           }
           ${rows ? `<ul class="log growth-list">${rows}</ul>` : ""}
@@ -1864,33 +2280,27 @@ class BabyTrackerCard extends HTMLElement {
     const { reached, upcoming } = milestoneTimeline(d.milestones);
     const form = this._milestoneForm;
     const age = (iso) => (d.birth_date ? formatAge(d.birth_date, iso) : "");
-    const typical = (m) => (m.months ? `${m.cdc ? "Most by" : "Around"} ${monthsLabel(m.months)}` : "");
+    const typical = (m) => (m.months ? t(m.cdc ? "ms.most_by" : "ms.around", { age: monthsLabel(m.months) }) : "");
     const item = (m) => {
       const done = Boolean(m.date);
       const open = this._msAllOpen || this._msOpen.has(m.key);
       const when = done ? [dateLabel(m.date), age(m.date)].filter(Boolean).join(" · ") : typical(m);
       const details = [];
-      if (done) details.push(`Reached on ${dateLabel(m.date)}${age(m.date) ? ` (${age(m.date)})` : ""}`);
-      if (m.months) {
-        details.push(
-          m.cdc
-            ? `Most children by ${monthsLabel(m.months)} (CDC)`
-            : `Typically around ${monthsLabel(m.months)}`
-        );
-      }
-      if (m.note) details.push(`Note: ${m.note}`);
+      if (done) details.push(`${t("ms.reached_on_date", { date: dateLabel(m.date) })}${age(m.date) ? ` (${age(m.date)})` : ""}`);
+      if (m.months) details.push(t(m.cdc ? "ms.cdc" : "ms.typical", { age: monthsLabel(m.months) }));
+      if (m.note) details.push(t("ms.note", { note: m.note }));
       const dateField = `date-${m.key}`;
       const panel = open
         ? `<div class="ms-details">
             ${details.map((t) => `<div>${esc(t)}</div>`).join("")}
             <div class="form ms-edit" data-submit="milestone-save" data-value="${esc(m.key)}">
-              <label>Reached on
+              <label>${esc(t("ms.reached_on"))}
                 <input id="ms-date-${esc(m.key)}" type="date" max="${todayIso()}" data-form="milestone" data-field="${esc(dateField)}"
                   value="${esc(form[dateField] ?? m.date ?? todayIso())}"></label>
               <div class="actions">
-                <button class="small primary" data-action="milestone-save" data-value="${esc(m.key)}">${done ? "Save date" : "Reached"}</button>
-                ${done ? `<button class="small" data-action="milestone-clear" data-value="${esc(m.key)}">Not reached</button>` : ""}
-                ${m.custom ? `<button class="small" data-action="milestone-delete" data-value="${esc(m.key)}">Delete</button>` : ""}
+                <button class="small primary" data-action="milestone-save" data-value="${esc(m.key)}">${esc(t(done ? "ms.save_date" : "ms.reached"))}</button>
+                ${done ? `<button class="small" data-action="milestone-clear" data-value="${esc(m.key)}">${esc(t("ms.not_reached"))}</button>` : ""}
+                ${m.custom ? `<button class="small" data-action="milestone-delete" data-value="${esc(m.key)}">${esc(t("delete"))}</button>` : ""}
               </div>
             </div>
           </div>`
@@ -1898,7 +2308,7 @@ class BabyTrackerCard extends HTMLElement {
       return `<li class="ms${done ? " done" : ""}${open ? " open" : ""}" data-key="${esc(m.key)}">
           <button class="ms-row" data-action="milestone" data-value="${esc(m.key)}" aria-expanded="${open}">
             <span class="ms-dot"><ha-icon icon="${done ? "mdi:check" : m.custom ? "mdi:star-outline" : "mdi:circle-small"}"></ha-icon></span>
-            <span class="ms-name">${esc(m.name)}</span>
+            <span class="ms-name">${esc(milestoneName(m))}</span>
             ${when ? `<span class="ms-when">${esc(when)}</span>` : ""}
             <ha-icon class="chevron" icon="mdi:chevron-${open ? "up" : "down"}"></ha-icon>
           </button>
@@ -1908,21 +2318,21 @@ class BabyTrackerCard extends HTMLElement {
     const hidden = this._msShowAll ? 0 : Math.max(0, upcoming.length - UPCOMING_SHOWN);
     const shownUpcoming = this._msShowAll ? upcoming : upcoming.slice(0, UPCOMING_SHOWN);
     const timeline = [
-      reached.length ? `<li class="ms-label">Reached</li>${reached.map(item).join("")}` : "",
-      upcoming.length ? `<li class="ms-label">Up next</li>${shownUpcoming.map(item).join("")}` : "",
+      reached.length ? `<li class="ms-label">${esc(t("ms.reached"))}</li>${reached.map(item).join("")}` : "",
+      upcoming.length ? `<li class="ms-label">${esc(t("ms.up_next"))}</li>${shownUpcoming.map(item).join("")}` : "",
     ].join("");
     const more =
       upcoming.length > UPCOMING_SHOWN
         ? `<button class="collapse ms-more" data-action="milestones-more" aria-expanded="${this._msShowAll}">
-            <ha-icon icon="mdi:chevron-${this._msShowAll ? "up" : "down"}"></ha-icon>${this._msShowAll ? "Show fewer" : `Show ${hidden} more`}</button>`
+            <ha-icon icon="mdi:chevron-${this._msShowAll ? "up" : "down"}"></ha-icon>${esc(this._msShowAll ? t("ms.fewer") : t("ms.more", { n: hidden }))}</button>`
         : "";
     return `
         <div class="section milestones">
-          <div class="section-title ms-head"><span>Milestones</span>
+          <div class="section-title ms-head"><span>${esc(t("ms.title"))}</span>
             <span class="ms-tools">
               <button class="small" data-action="milestones-all" aria-pressed="${this._msAllOpen}">
-                <ha-icon icon="mdi:${this._msAllOpen ? "unfold-less-horizontal" : "unfold-more-horizontal"}"></ha-icon>${this._msAllOpen ? "Collapse all" : "Expand all"}</button>
-              <button class="small primary" data-action="milestone-add-open"><ha-icon icon="mdi:plus"></ha-icon>Add</button>
+                <ha-icon icon="mdi:${this._msAllOpen ? "unfold-less-horizontal" : "unfold-more-horizontal"}"></ha-icon>${esc(t(this._msAllOpen ? "ms.collapse_all" : "ms.expand_all"))}</button>
+              <button class="small primary" data-action="milestone-add-open"><ha-icon icon="mdi:plus"></ha-icon>${esc(t("ms.add"))}</button>
             </span>
           </div>
           <ol class="ms-timeline">${timeline}</ol>
@@ -1936,21 +2346,22 @@ class BabyTrackerCard extends HTMLElement {
     const dialog = this.shadowRoot.querySelector("dialog.ms-dialog");
     if (!dialog) return;
     this._addForm = { query: "", date: todayIso(), note: "" };
-    const name = this._data?.name ? esc(this._data.name) : "the baby";
+    this._applyLanguage();
+    const name = this._data?.name || t("dlg.the_baby");
     dialog.innerHTML = `
       <div class="dlg">
-        <div class="dlg-title">Add milestone</div>
-        <label>What did ${name} do?
-          <input id="ms-add-query" type="text" maxlength="100" autocomplete="off" placeholder="e.g. rolls over, first swim" data-add="query"></label>
+        <div class="dlg-title">${esc(t("dlg.title"))}</div>
+        <label>${esc(t("dlg.what", { name }))}
+          <input id="ms-add-query" type="text" maxlength="100" autocomplete="off" placeholder="${esc(t("dlg.placeholder"))}" data-add="query"></label>
         <ul class="suggestions" role="listbox"></ul>
         <div class="dlg-fields">
-          <label>Reached on <input id="ms-add-date" type="date" max="${todayIso()}" data-add="date" value="${todayIso()}"></label>
-          <label>Note <input id="ms-add-note" type="text" maxlength="200" placeholder="Optional" data-add="note"></label>
+          <label>${esc(t("ms.reached_on"))} <input id="ms-add-date" type="date" max="${todayIso()}" data-add="date" value="${todayIso()}"></label>
+          <label>${esc(t("dlg.note"))} <input id="ms-add-note" type="text" maxlength="200" placeholder="${esc(t("dlg.optional"))}" data-add="note"></label>
         </div>
-        <small>Clear the date to add it as not reached yet.</small>
+        <small>${esc(t("dlg.hint"))}</small>
         <div class="dlg-actions">
-          <button class="small" data-action="add-cancel">Cancel</button>
-          <button class="small primary" data-action="add-new" disabled>Add as new</button>
+          <button class="small" data-action="add-cancel">${esc(t("cancel"))}</button>
+          <button class="small primary" data-action="add-new" disabled>${esc(t("dlg.add_new"))}</button>
         </div>
       </div>`;
     this._updateSuggestions();
@@ -1972,21 +2383,24 @@ class BabyTrackerCard extends HTMLElement {
   _updateSuggestions() {
     const dialog = this.shadowRoot.querySelector("dialog.ms-dialog");
     if (!dialog || !this._addForm) return;
+    this._applyLanguage();
     const query = this._addForm.query.trim();
     const matches = matchMilestones(query, this._data?.milestones || []);
     dialog.querySelector(".suggestions").innerHTML = matches
       .map((m) => {
-        const status = m.date ? `Reached ${dateLabel(m.date)}` : MILESTONE_CATEGORIES[m.category] || "";
+        const status = m.date ? t("dlg.reached", { date: dateLabel(m.date) }) : MILESTONE_CATEGORIES[m.category] || "";
         return `<li><button class="suggestion${m.date ? " done" : ""}" data-action="add-pick" data-value="${esc(m.key)}" role="option">
             <ha-icon icon="${m.date ? "mdi:check-circle" : "mdi:circle-outline"}"></ha-icon>
-            <span class="ms-name">${esc(m.name)}</span><span class="ms-when">${esc(status)}</span></button></li>`;
+            <span class="ms-name">${esc(milestoneName(m))}</span><span class="ms-when">${esc(status)}</span></button></li>`;
       })
       .join("");
     const wanted = normalizeText(query);
-    const exact = Boolean(wanted) && (this._data?.milestones || []).some((m) => normalizeText(m.name) === wanted);
+    const exact =
+      Boolean(wanted) &&
+      (this._data?.milestones || []).some((m) => [m.name, milestoneName(m)].some((name) => normalizeText(name) === wanted));
     const add = dialog.querySelector('[data-action="add-new"]');
     add.disabled = !query || exact;
-    add.textContent = query ? `Add “${query.length > 30 ? `${query.slice(0, 30)}…` : query}” as new` : "Add as new";
+    add.textContent = query ? t("dlg.add_named", { name: query.length > 30 ? `${query.slice(0, 30)}…` : query }) : t("dlg.add_new");
   }
 
   _handleDialogInput(ev) {
@@ -2061,12 +2475,12 @@ class BabyTrackerCard extends HTMLElement {
     return `
         <div class="section">
           <div class="summary">
-            <div><div class="label"><ha-icon icon="mdi:weather-night"></ha-icon>Last night</div>
+            <div><div class="label"><ha-icon icon="mdi:weather-night"></ha-icon>${esc(t("sum.last_night"))}</div>
               <div class="value">${hours(n.asleep)}</div>
-              <div class="sub">${plural(n.wakes, "wake-up", "wake-ups")} · avg ${hours(n.avg_asleep)}</div></div>
-            <div><div class="label"><ha-icon icon="mdi:weather-sunny"></ha-icon>${day.done === false ? "Today" : "Daytime"}</div>
+              <div class="sub">${esc(tn(n.wakes, "wake"))} · ${esc(t("sum.avg", { h: hours(n.avg_asleep) }))}</div></div>
+            <div><div class="label"><ha-icon icon="mdi:weather-sunny"></ha-icon>${esc(t(day.done === false ? "sum.today" : "sum.daytime"))}</div>
               <div class="value">${hours(day.asleep)}</div>
-              <div class="sub">${plural(day.naps, "nap", "naps")} · avg ${hours(day.avg_asleep)}</div></div>
+              <div class="sub">${esc(tn(day.naps, "nap"))} · ${esc(t("sum.avg", { h: hours(day.avg_asleep) }))}</div></div>
           </div>
         </div>`;
   }
@@ -2075,16 +2489,16 @@ class BabyTrackerCard extends HTMLElement {
     const buckets = dailyTrends(d.events || [], Number(this._config.days) || 7, now, d.sleep_start);
     return `
         <div class="section">
-          <div class="section-title">Last ${buckets.length} days</div>
+          <div class="section-title">${esc(t("trends.title", { n: buckets.length }))}</div>
           <div class="charts">
-            <div class="chart"><div class="chart-title">Diapers</div>
+            <div class="chart"><div class="chart-title">${esc(t("trends.diapers"))}</div>
               ${stackedBars(buckets, Object.keys(DIAPER), Object.fromEntries(Object.entries(DIAPER).map(([k, v]) => [k, v.color])), (b, k) => b.diapers[k])}
               ${legend(Object.values(DIAPER).map((v) => [v.label, v.color]))}</div>
-            <div class="chart"><div class="chart-title">Feedings</div>
+            <div class="chart"><div class="chart-title">${esc(t("trends.feedings"))}</div>
               ${stackedBars(buckets, Object.keys(SIDES), Object.fromEntries(Object.entries(SIDES).map(([k, v]) => [k, v.color])), (b, k) => b.feedings[k])}
               ${legend(Object.values(SIDES).map((v) => [v.label, v.color]))}</div>
-            <div class="chart wide"><div class="chart-title">Sleep (hours)</div>
-              ${stackedBars(buckets, ["sleep"], { sleep: SLEEP_COLORS.night }, (b) => b.sleep, { unit: " h", decimals: 1 })}</div>
+            <div class="chart wide"><div class="chart-title">${esc(t("trends.sleep"))}</div>
+              ${stackedBars(buckets, ["sleep"], { sleep: SLEEP_COLORS.night }, (b) => b.sleep, { unit: ` ${t("unit.h")}`, decimals: 1 })}</div>
           </div>
         </div>`;
   }
@@ -2102,13 +2516,13 @@ class BabyTrackerCard extends HTMLElement {
         lastDay = day;
         const { emoji, text } = describe(e);
         return `${heading}<li><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
-            <button class="icon" title="Delete" aria-label="Delete" data-action="delete" data-value="${esc(e.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
+            <button class="icon" title="${esc(t("delete"))}" aria-label="${esc(t("delete"))}" data-action="delete" data-value="${esc(e.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
       })
       .join("");
     return `
         <div class="section">
-          <div class="section-title">Log</div>
-          ${rows ? `<ul class="log">${rows}</ul>` : `<div class="message">Nothing logged yet.</div>`}
+          <div class="section-title">${esc(t("log.title"))}</div>
+          ${rows ? `<ul class="log">${rows}</ul>` : `<div class="message">${esc(t("nothing.full"))}</div>`}
         </div>`;
   }
 }
@@ -2373,7 +2787,7 @@ class BabyTrackerCardEditor extends HTMLElement {
         const fields =
           kind === "buttons"
             ? `<div class="fields">
-                <input type="text" placeholder="Name" data-list="buttons" data-index="${index}" data-field="name" value="${esc(item.name ?? "")}">
+                <input type="text" placeholder="${esc(t("ed.name"))}" data-list="buttons" data-index="${index}" data-field="name" value="${esc(item.name ?? "")}">
                 <input type="text" placeholder="${esc(BUTTON_ACTIONS[item.action].icon)}" data-list="buttons" data-index="${index}" data-field="icon" value="${esc(item.icon ?? "")}">
                 <input type="text" placeholder="${esc(BUTTON_ACTIONS[item.action].color)}" data-list="buttons" data-index="${index}" data-field="color" value="${esc(item.color ?? "")}">
               </div>`
@@ -2381,8 +2795,8 @@ class BabyTrackerCardEditor extends HTMLElement {
         return `<div class="row${item.on ? "" : " off"}">
             <label><input type="checkbox" data-list="${kind}" data-index="${index}" data-op="toggle" ${item.on ? "checked" : ""}> ${esc(label)}</label>
             <span class="arrows">
-              <button type="button" title="Move up" data-list="${kind}" data-index="${index}" data-op="up" ${index === 0 ? "disabled" : ""}>▲</button>
-              <button type="button" title="Move down" data-list="${kind}" data-index="${index}" data-op="down" ${index === list.length - 1 ? "disabled" : ""}>▼</button>
+              <button type="button" title="${esc(t("ed.up"))}" data-list="${kind}" data-index="${index}" data-op="up" ${index === 0 ? "disabled" : ""}>▲</button>
+              <button type="button" title="${esc(t("ed.down"))}" data-list="${kind}" data-index="${index}" data-op="down" ${index === list.length - 1 ? "disabled" : ""}>▼</button>
             </span>
             ${fields}
           </div>`;
@@ -2392,9 +2806,13 @@ class BabyTrackerCardEditor extends HTMLElement {
 
   _render() {
     if (!this._config) return;
+    setLanguage(cardLanguage(this._config, this._hass));
     const c = { ...DEFAULTS, ...this._config };
     const babies = this._babies || [];
-    const options = [`<option value="">First baby</option>`]
+    const languages = [["auto", t("ed.language_auto")], ...Object.entries(LANGUAGES)]
+      .map(([code, name]) => `<option value="${code}" ${(c.language || "auto") === code ? "selected" : ""}>${esc(name)}</option>`)
+      .join("");
+    const options = [`<option value="">${esc(t("ed.first_baby"))}</option>`]
       .concat(babies.map((b) => `<option value="${esc(b.entry_id)}" ${b.entry_id === c.entry_id ? "selected" : ""}>${esc(b.name)}</option>`))
       .join("");
     this.innerHTML = `
@@ -2412,39 +2830,40 @@ class BabyTrackerCardEditor extends HTMLElement {
         .bt-editor .fields input { min-width: 0; }
       </style>
       <div class="bt-editor">
-        <label>Baby <select data-key="entry_id">${options}</select></label>
-        <h3>Parts</h3>
+        <label>${esc(t("ed.baby"))} <select data-key="entry_id">${options}</select></label>
+        <label>${esc(t("ed.language"))} <select data-key="language">${languages}</select></label>
+        <h3>${esc(t("ed.parts"))}</h3>
         <div class="list">${this._listRows(this._parts, "parts")}</div>
-        <small>Hidden undo banner: it still appears above the first buttons / tiles part when an action can be undone, unless the quick buttons have an Undo button.</small>
-        <h3>Quick buttons</h3>
+        <small>${esc(t("ed.undo_hint"))}</small>
+        <h3>${esc(t("ed.buttons"))}</h3>
         <div class="list">${this._listRows(this._buttons, "buttons")}</div>
-        <small>Name, icon and colour are optional. Colours can be Home Assistant names (e.g. light-blue) or CSS colours.</small>
-        <label>Buttons per row <input type="number" min="1" max="12" data-key="buttons_columns" value="${esc(c.buttons_columns ?? 3)}"></label>
-        <h3>Options</h3>
-        <label>Timeline days <input type="number" min="1" max="${TIMELINE_MAX_DAYS}" data-key="timeline_days" value="${esc(c.timeline_days)}"></label>
-        <label>Days per timeline line <select data-key="timeline_group" data-number>
+        <small>${esc(t("ed.buttons_hint"))}</small>
+        <label>${esc(t("ed.per_row"))} <input type="number" min="1" max="12" data-key="buttons_columns" value="${esc(c.buttons_columns ?? 3)}"></label>
+        <h3>${esc(t("ed.options"))}</h3>
+        <label>${esc(t("ed.tl_days"))} <input type="number" min="1" max="${TIMELINE_MAX_DAYS}" data-key="timeline_days" value="${esc(c.timeline_days)}"></label>
+        <label>${esc(t("ed.tl_group"))} <select data-key="timeline_group" data-number>
           ${[1, 3, 7, 14, 30]
             .concat([1, 3, 7, 14, 30].includes(Number(c.timeline_group)) ? [] : [Number(c.timeline_group)])
-            .map((n) => `<option value="${n}" ${Number(c.timeline_group) === n ? "selected" : ""}>${n === 1 ? "Every day" : `Average of ${n} days`}</option>`)
+            .map((n) => `<option value="${n}" ${Number(c.timeline_group) === n ? "selected" : ""}>${esc(n === 1 ? t("ed.every_day") : t("ed.average_of", { n }))}</option>`)
             .join("")}
         </select></label>
-        <label>Timeline lines start at <select data-key="timeline_start_hour" data-number>
+        <label>${esc(t("ed.tl_start"))} <select data-key="timeline_start_hour" data-number>
           ${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${Number(c.timeline_start_hour) === h ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}
         </select></label>
-        <label>Nights shown <input type="number" min="1" max="${NIGHTS_MAX}" data-key="night_days" value="${esc(c.night_days)}"></label>
-        <label>Night from <input type="time" data-key="night_start" value="${esc(c.night_start)}"> to <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
-        <small>Leave the night times empty to use the integration's Night starts / Night ends settings.</small>
-        <label>Log entries <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
-        <label>Growth units <select data-key="units">
-          <option value="metric" ${c.units === "imperial" ? "" : "selected"}>Metric (kg, cm)</option>
-          <option value="imperial" ${c.units === "imperial" ? "selected" : ""}>Imperial (lb + oz, in)</option>
+        <label>${esc(t("ed.nights"))} <input type="number" min="1" max="${NIGHTS_MAX}" data-key="night_days" value="${esc(c.night_days)}"></label>
+        <label>${esc(t("ed.night_from"))} <input type="time" data-key="night_start" value="${esc(c.night_start)}"> ${esc(t("ed.to"))} <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
+        <small>${esc(t("ed.night_hint"))}</small>
+        <label>${esc(t("ed.log_entries"))} <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
+        <label>${esc(t("ed.units"))} <select data-key="units">
+          <option value="metric" ${c.units === "imperial" ? "" : "selected"}>${esc(t("ed.metric"))}</option>
+          <option value="imperial" ${c.units === "imperial" ? "selected" : ""}>${esc(t("ed.imperial"))}</option>
         </select></label>
-        <label>Measurements listed under the growth charts <input type="number" min="0" max="100" data-key="growth_entries" value="${esc(c.growth_entries)}"></label>
-        <label>Measurement list <select data-key="growth_list">
-          <option value="collapsed" ${c.growth_list === "expanded" ? "" : "selected"}>Collapsed</option>
-          <option value="expanded" ${c.growth_list === "expanded" ? "selected" : ""}>Expanded</option>
+        <label>${esc(t("ed.growth_entries"))} <input type="number" min="0" max="100" data-key="growth_entries" value="${esc(c.growth_entries)}"></label>
+        <label>${esc(t("ed.growth_list"))} <select data-key="growth_list">
+          <option value="collapsed" ${c.growth_list === "expanded" ? "" : "selected"}>${esc(t("ed.collapsed"))}</option>
+          <option value="expanded" ${c.growth_list === "expanded" ? "selected" : ""}>${esc(t("ed.expanded"))}</option>
         </select></label>
-        <label>Days of history <input type="number" min="1" max="31" data-key="days" value="${esc(c.days)}"></label>
+        <label>${esc(t("ed.days"))} <input type="number" min="1" max="31" data-key="days" value="${esc(c.days)}"></label>
       </div>`;
     this.querySelectorAll("[data-key]").forEach((el) => {
       el.addEventListener("change", (ev) => {

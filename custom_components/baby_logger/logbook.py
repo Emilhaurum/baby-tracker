@@ -1,4 +1,4 @@
-"""Describe Baby Tracker events in the logbook."""
+"""Describe Baby Tracker events in the logbook (in English or Danish)."""
 
 from __future__ import annotations
 
@@ -10,9 +10,60 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EVENT_BABY_TRACKER
+from .milestones import localized_milestone_name
 
-DIAPER = {"wet": "💧 wet diaper", "dirty": "💩 dirty diaper", "both": "💧💩 wet and dirty diaper"}
-SIDES = {"left": "left", "right": "right", "bottle": "bottle"}
+TEXTS: dict[str, dict[str, Any]] = {
+    "en": {
+        "diaper_types": {
+            "wet": "💧 wet diaper",
+            "dirty": "💩 dirty diaper",
+            "both": "💧💩 wet and dirty diaper",
+        },
+        "diaper_default": "diaper",
+        "sides": {"left": "left", "right": "right", "bottle": "bottle"},
+        "kinds": {"diaper": "diaper", "feeding": "feeding", "sleep": "sleep"},
+        "diaper": "logged a {diaper} ({at})",
+        "first_side": "logged {side} as the first side of a feeding{amount} ({at})",
+        "same_feeding": "switched to {side} in the same feeding{amount} ({at})",
+        "feeding": "started a feeding: {side}{amount} ({at})",
+        "sleep": "😴 fell asleep ({at})",
+        "wake": "☀️ woke up after {hours}h {minutes:02d}m ({at})",
+        "undo": "↩️ undid the last action ({undone})",
+        "delete": "deleted a {kind} entry",
+        "delete_default": "logged",
+        "add_sleep": "😴 sleep added ({start}–{end})",
+        "update_sleep": "😴 sleep changed",
+        "growth": "📏 measured {values}",
+        "delete_growth": "deleted a measurement",
+        "milestone": "🏁 milestone: {name}",
+        "add_milestone": "added milestone: {name}",
+        "clear_milestone": "cleared milestone: {name}",
+        "delete_milestone": "deleted milestone: {name}",
+    },
+    "da": {
+        "diaper_types": {"wet": "💧 våd ble", "dirty": "💩 beskidt ble", "both": "💧💩 våd og beskidt ble"},
+        "diaper_default": "ble",
+        "sides": {"left": "venstre", "right": "højre", "bottle": "flaske"},
+        "kinds": {"diaper": "ble", "feeding": "måltid", "sleep": "søvn"},
+        "diaper": "registrerede en {diaper} ({at})",
+        "first_side": "registrerede {side} som første side i et måltid{amount} ({at})",
+        "same_feeding": "skiftede til {side} i samme måltid{amount} ({at})",
+        "feeding": "startede et måltid: {side}{amount} ({at})",
+        "sleep": "😴 faldt i søvn ({at})",
+        "wake": "☀️ vågnede efter {hours}t {minutes:02d}m ({at})",
+        "undo": "↩️ fortrød seneste handling ({undone})",
+        "delete": "slettede en registrering ({kind})",
+        "delete_default": "registrering",
+        "add_sleep": "😴 søvn tilføjet ({start}–{end})",
+        "update_sleep": "😴 søvn ændret",
+        "growth": "📏 målte {values}",
+        "delete_growth": "slettede en måling",
+        "milestone": "🏁 milepæl: {name}",
+        "add_milestone": "tilføjede milepæl: {name}",
+        "clear_milestone": "nulstillede milepæl: {name}",
+        "delete_milestone": "slettede milepæl: {name}",
+    },
+}
 
 
 def _clock(value: str | None) -> str:
@@ -20,50 +71,57 @@ def _clock(value: str | None) -> str:
     return dt_util.as_local(parsed).strftime("%H:%M") if parsed else ""
 
 
-def describe(data: dict[str, Any]) -> str:
+def _language(language: str | None) -> str:
+    code = (language or "en").lower().split("-")[0].split("_")[0]
+    return code if code in TEXTS else "en"
+
+
+def describe(data: dict[str, Any], language: str | None = "en") -> str:
     """Return a short human readable description of a logged action."""
+    lang = _language(language)
+    text = TEXTS[lang]
     action = data.get("action")
     at = _clock(data.get("time"))
     if action == "diaper":
-        return f"logged a {DIAPER.get(data.get('type', ''), 'diaper')} ({at})"
+        diaper = text["diaper_types"].get(data.get("type", ""), text["diaper_default"])
+        return text["diaper"].format(diaper=diaper, at=at)
     if action == "feeding":
-        side = SIDES.get(data.get("side", ""), data.get("side", ""))
+        side = text["sides"].get(data.get("side", ""), data.get("side", ""))
         amount = f", {data['amount_ml']:g} ml" if data.get("amount_ml") else ""
-        if data.get("first_side"):
-            return f"logged {side} as the first side of a feeding{amount} ({at})"
-        if data.get("same_feeding"):
-            return f"switched to {side} in the same feeding{amount} ({at})"
-        return f"started a feeding: {side}{amount} ({at})"
+        key = (
+            "first_side"
+            if data.get("first_side")
+            else "same_feeding"
+            if data.get("same_feeding")
+            else "feeding"
+        )
+        return text[key].format(side=side, amount=amount, at=at)
     if action == "sleep":
-        return f"😴 fell asleep ({at})"
+        return text["sleep"].format(at=at)
     if action == "wake":
         minutes = int(data.get("minutes") or 0)
-        return f"☀️ woke up after {minutes // 60}h {minutes % 60:02d}m ({at})"
+        return text["wake"].format(hours=minutes // 60, minutes=minutes % 60, at=at)
     if action == "undo":
-        return f"↩️ undid the last action ({data.get('undone')})"
+        return text["undo"].format(undone=data.get("undone"))
     if action == "delete":
-        return f"deleted a {data.get('kind', 'logged')} entry"
+        kind = data.get("kind")
+        return text["delete"].format(kind=text["kinds"].get(kind, kind or text["delete_default"]))
     if action == "add_sleep":
-        return f"😴 sleep added ({_clock(data.get('start'))}–{_clock(data.get('end'))})"
+        return text["add_sleep"].format(start=_clock(data.get("start")), end=_clock(data.get("end")))
     if action == "update_sleep":
-        return "😴 sleep changed"
+        return text["update_sleep"]
     if action == "growth":
-        parts = []
+        values = []
         if data.get("weight_kg") is not None:
-            parts.append(f"{data['weight_kg']:g} kg")
+            values.append(f"{data['weight_kg']:g} kg")
         if data.get("length_cm") is not None:
-            parts.append(f"{data['length_cm']:g} cm")
-        return f"📏 measured {', '.join(parts)}"
+            values.append(f"{data['length_cm']:g} cm")
+        return text["growth"].format(values=", ".join(values))
     if action == "delete_growth":
-        return "deleted a measurement"
-    if action == "milestone":
-        return f"🏁 milestone: {data.get('milestone_name', '')}"
-    if action == "add_milestone":
-        return f"added milestone: {data.get('milestone_name', '')}"
-    if action == "clear_milestone":
-        return f"cleared milestone: {data.get('milestone_name', '')}"
-    if action == "delete_milestone":
-        return f"deleted milestone: {data.get('milestone_name', '')}"
+        return text["delete_growth"]
+    if action in ("milestone", "add_milestone", "clear_milestone", "delete_milestone"):
+        name = localized_milestone_name(str(data.get("milestone", "")), data.get("milestone_name", ""), lang)
+        return text[action].format(name=name)
     return str(action)
 
 
@@ -78,7 +136,7 @@ def async_describe_events(
     def async_describe(event: Event) -> dict[str, str]:
         return {
             LOGBOOK_ENTRY_NAME: event.data.get("name", "Baby"),
-            LOGBOOK_ENTRY_MESSAGE: describe(event.data),
+            LOGBOOK_ENTRY_MESSAGE: describe(event.data, hass.config.language),
         }
 
     async_describe_event(DOMAIN, EVENT_BABY_TRACKER, async_describe)
