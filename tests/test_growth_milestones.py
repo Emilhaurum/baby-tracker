@@ -186,6 +186,12 @@ async def test_snapshot(hass: HomeAssistant, entry: MockConfigEntry, hass_ws_cli
         "months": 12,
         "cdc": False,
         "tags": ["walk", "walking", "steps", "step", "toddle"],
+        "i18n": {
+            "da": {
+                "name": "Første skridt på egen hånd",
+                "tags": ["går", "gå", "skridt", "gik", "første skridt"],
+            }
+        },
         "custom": False,
         "date": None,
         "note": None,

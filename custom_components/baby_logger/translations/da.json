@@ -1,0 +1,577 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tilføj en baby",
+        "description": "Hver baby du tilføjer får sin egen enhed, egne sensorer, knapper og søvnkalender.",
+        "data": {
+          "name": "Navn",
+          "birth_date": "Fødselsdato"
+        },
+        "data_description": {
+          "name": "Babyens navn, som bruges til enheden og enhedernes navne.",
+          "birth_date": "Valgfri. Bruges til at vise babyens alder på vækstkurven og ved milepæle."
+        }
+      },
+      "reconfigure": {
+        "title": "Ret baby",
+        "data": {
+          "name": "Navn",
+          "birth_date": "Fødselsdato"
+        },
+        "data_description": {
+          "name": "Babyens navn, som bruges til enheden og enhedernes navne.",
+          "birth_date": "Valgfri. Bruges til at vise babyens alder på vækstkurven og ved milepæle."
+        }
+      }
+    },
+    "error": {
+      "name_required": "Skriv et navn.",
+      "name_taken": "En anden baby har allerede dette navn."
+    },
+    "abort": {
+      "reconfigure_successful": "Babyen blev opdateret."
+    }
+  },
+  "entity": {
+    "button": {
+      "diaper_wet": {
+        "name": "Ble våd"
+      },
+      "diaper_dirty": {
+        "name": "Ble beskidt"
+      },
+      "diaper_both": {
+        "name": "Ble våd og beskidt"
+      },
+      "feed_left": {
+        "name": "Amning venstre"
+      },
+      "feed_right": {
+        "name": "Amning højre"
+      },
+      "feed_bottle": {
+        "name": "Flaske"
+      },
+      "undo": {
+        "name": "Fortryd seneste handling"
+      }
+    },
+    "calendar": {
+      "sleep": {
+        "name": "Søvn"
+      }
+    },
+    "number": {
+      "feeding_merge_window": {
+        "name": "Vindue for samme måltid"
+      }
+    },
+    "sensor": {
+      "last_diaper": {
+        "name": "Seneste ble",
+        "state_attributes": {
+          "type": {
+            "name": "Type",
+            "state": {
+              "wet": "Våd",
+              "dirty": "Beskidt",
+              "both": "Våd og beskidt"
+            }
+          }
+        }
+      },
+      "last_diaper_type": {
+        "name": "Seneste bletype",
+        "state": {
+          "wet": "Våd",
+          "dirty": "Beskidt",
+          "both": "Våd og beskidt"
+        }
+      },
+      "diapers_today": {
+        "name": "Bleer i dag",
+        "unit_of_measurement": "bleer",
+        "state_attributes": {
+          "wet": {
+            "name": "Våd"
+          },
+          "dirty": {
+            "name": "Beskidt"
+          },
+          "both": {
+            "name": "Våd og beskidt"
+          }
+        }
+      },
+      "last_feeding": {
+        "name": "Seneste måltid",
+        "state_attributes": {
+          "side": {
+            "name": "Side",
+            "state": {
+              "left": "Venstre",
+              "right": "Højre",
+              "bottle": "Flaske"
+            }
+          },
+          "amount_ml": {
+            "name": "Mængde (ml)"
+          },
+          "sides": {
+            "name": "Sider"
+          },
+          "last_switch": {
+            "name": "Seneste sideskift"
+          }
+        }
+      },
+      "last_feeding_side": {
+        "name": "Seneste side",
+        "state": {
+          "left": "Venstre",
+          "right": "Højre",
+          "bottle": "Flaske"
+        }
+      },
+      "next_feeding_side": {
+        "name": "Næste side",
+        "state": {
+          "left": "Venstre",
+          "right": "Højre"
+        }
+      },
+      "feedings_today": {
+        "name": "Måltider i dag",
+        "unit_of_measurement": "måltider",
+        "state_attributes": {
+          "left": {
+            "name": "Venstre"
+          },
+          "right": {
+            "name": "Højre"
+          },
+          "bottle": {
+            "name": "Flaske"
+          }
+        }
+      },
+      "bottle_today": {
+        "name": "Flaske i dag"
+      },
+      "sleep_today": {
+        "name": "Søvn i dag"
+      },
+      "last_night_sleep": {
+        "name": "Søvn i nat",
+        "state_attributes": {
+          "awake": {
+            "name": "Vågen (t)"
+          },
+          "wakes": {
+            "name": "Opvågninger"
+          },
+          "from": {
+            "name": "Fra"
+          },
+          "to": {
+            "name": "Til"
+          },
+          "avg_asleep": {
+            "name": "Søvn i gennemsnit (t)"
+          },
+          "avg_awake": {
+            "name": "Vågen i gennemsnit (t)"
+          },
+          "avg_wakes": {
+            "name": "Opvågninger i gennemsnit"
+          },
+          "nights": {
+            "name": "Nætter"
+          }
+        }
+      },
+      "daytime_sleep": {
+        "name": "Søvn om dagen",
+        "state_attributes": {
+          "awake": {
+            "name": "Vågen (t)"
+          },
+          "naps": {
+            "name": "Lure"
+          },
+          "from": {
+            "name": "Fra"
+          },
+          "to": {
+            "name": "Til"
+          },
+          "done": {
+            "name": "Afsluttet"
+          },
+          "avg_asleep": {
+            "name": "Søvn i gennemsnit (t)"
+          },
+          "avg_awake": {
+            "name": "Vågen i gennemsnit (t)"
+          },
+          "avg_naps": {
+            "name": "Lure i gennemsnit"
+          },
+          "days": {
+            "name": "Dage"
+          }
+        }
+      },
+      "last_woke_up": {
+        "name": "Vågnede sidst"
+      },
+      "weight": {
+        "name": "Vægt",
+        "state_attributes": {
+          "measured": {
+            "name": "Målt"
+          }
+        }
+      },
+      "length": {
+        "name": "Længde",
+        "state_attributes": {
+          "measured": {
+            "name": "Målt"
+          }
+        }
+      }
+    },
+    "switch": {
+      "sleeping": {
+        "name": "Sover",
+        "state_attributes": {
+          "since": {
+            "name": "Siden"
+          }
+        }
+      }
+    },
+    "time": {
+      "night_start": {
+        "name": "Natten starter"
+      },
+      "night_end": {
+        "name": "Natten slutter"
+      }
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "Der blev ikke fundet nogen baby med konfigurations-ID {entry_id}."
+    },
+    "entry_not_loaded": {
+      "message": "{name} er ikke indlæst."
+    },
+    "event_not_found": {
+      "message": "Der blev ikke fundet nogen registrering med ID {event_id}."
+    },
+    "invalid_diaper_type": {
+      "message": "Ukendt bletype: {type}."
+    },
+    "invalid_side": {
+      "message": "Ukendt side: {side}."
+    },
+    "nothing_to_undo": {
+      "message": "Der er intet at fortryde (du kan fortryde i 30 sekunder)."
+    },
+    "already_sleeping": {
+      "message": "Babyen er allerede markeret som sovende."
+    },
+    "not_sleeping": {
+      "message": "Babyen er ikke markeret som sovende."
+    },
+    "end_before_start": {
+      "message": "Sluttidspunktet skal være efter starttidspunktet."
+    },
+    "all_day_sleep": {
+      "message": "Søvn skal have et start- og sluttidspunkt, ikke hele dage."
+    },
+    "night_window_empty": {
+      "message": "Natten kan ikke starte og slutte på samme tidspunkt."
+    },
+    "growth_empty": {
+      "message": "Skriv en vægt, en længde eller begge."
+    },
+    "weight_out_of_range": {
+      "message": "Vægten skal være mellem {min} og {max} kg."
+    },
+    "length_out_of_range": {
+      "message": "Længden skal være mellem {min} og {max} cm."
+    },
+    "milestone_not_found": {
+      "message": "Ukendt milepæl: {milestone}."
+    },
+    "milestone_not_custom": {
+      "message": "Kun milepæle, du selv har tilføjet, kan slettes ({milestone})."
+    },
+    "milestone_name_empty": {
+      "message": "Skriv et navn til milepælen."
+    },
+    "date_in_future": {
+      "message": "Datoen kan ikke ligge i fremtiden."
+    },
+    "time_in_future": {
+      "message": "Tidspunktet kan ikke ligge i fremtiden."
+    },
+    "date_before_birth": {
+      "message": "Datoen kan ikke ligge før fødselsdatoen ({birth_date})."
+    }
+  },
+  "selector": {
+    "diaper_type": {
+      "options": {
+        "wet": "Våd",
+        "dirty": "Beskidt",
+        "both": "Våd og beskidt"
+      }
+    },
+    "feeding_side": {
+      "options": {
+        "left": "Venstre",
+        "right": "Højre",
+        "bottle": "Flaske"
+      }
+    },
+    "units": {
+      "options": {
+        "metric": "Metrisk (kg, cm)",
+        "imperial": "Imperial (lb, in)"
+      }
+    }
+  },
+  "services": {
+    "log_diaper": {
+      "name": "Registrer ble",
+      "description": "Registrerer et bleskift.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Hvad der var i bleen."
+        },
+        "time": {
+          "name": "Tidspunkt",
+          "description": "Hvornår det skete. Som standard nu."
+        }
+      }
+    },
+    "log_feeding": {
+      "name": "Registrer måltid",
+      "description": "Registrerer et måltid. Registreringer inden for samme måltidsvindue som den forrige lægges til det måltid som et sideskift.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "side": {
+          "name": "Side",
+          "description": "Venstre eller højre bryst, eller flaske."
+        },
+        "amount_ml": {
+          "name": "Mængde",
+          "description": "Hvor meget der blev givet (ved flaske)."
+        },
+        "time": {
+          "name": "Tidspunkt",
+          "description": "Hvornår det skete. Som standard nu."
+        }
+      }
+    },
+    "start_sleep": {
+      "name": "Start søvn",
+      "description": "Markerer babyen som sovende.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "time": {
+          "name": "Tidspunkt",
+          "description": "Hvornår babyen faldt i søvn. Som standard nu."
+        }
+      }
+    },
+    "end_sleep": {
+      "name": "Afslut søvn",
+      "description": "Markerer babyen som vågen og gemmer søvnen i søvnkalenderen.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "time": {
+          "name": "Tidspunkt",
+          "description": "Hvornår babyen vågnede. Som standard nu."
+        }
+      }
+    },
+    "add_sleep": {
+      "name": "Tilføj søvn",
+      "description": "Tilføjer en afsluttet søvn bagefter.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Hvornår babyen faldt i søvn."
+        },
+        "end": {
+          "name": "Slut",
+          "description": "Hvornår babyen vågnede."
+        }
+      }
+    },
+    "undo": {
+      "name": "Fortryd seneste handling",
+      "description": "Fortryder den seneste registrering, inden for 30 sekunder.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal fortrydes for."
+        }
+      }
+    },
+    "delete_event": {
+      "name": "Slet registrering",
+      "description": "Sletter en registreret ble, et måltid eller en søvn.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, som registreringen hører til."
+        },
+        "event_id": {
+          "name": "Registrerings-ID",
+          "description": "ID'et på registreringen (vises i dashboard-kortet)."
+        }
+      }
+    },
+    "log_growth": {
+      "name": "Registrer vækst",
+      "description": "Registrerer en måling af vægt og/eller længde.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "weight": {
+          "name": "Vægt",
+          "description": "Vægt i kg (metrisk) eller lb (imperial)."
+        },
+        "length": {
+          "name": "Længde",
+          "description": "Længde eller højde i cm (metrisk) eller tommer (imperial)."
+        },
+        "units": {
+          "name": "Enheder",
+          "description": "Enheder for vægt og længde. Gemmes metrisk."
+        },
+        "date": {
+          "name": "Dato",
+          "description": "Hvornår det blev målt. Som standard i dag."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Valgfri note."
+        }
+      }
+    },
+    "delete_growth": {
+      "name": "Slet måling",
+      "description": "Sletter en registreret vækstmåling.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, som målingen hører til."
+        },
+        "event_id": {
+          "name": "Målings-ID",
+          "description": "ID'et på målingen."
+        }
+      }
+    },
+    "set_milestone": {
+      "name": "Nå milepæl",
+      "description": "Markerer en milepæl som nået, eller ændrer datoen, den blev nået.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "milestone": {
+          "name": "Milepæl",
+          "description": "Milepælens nøgle, f.eks. first_steps, eller ID'et på en milepæl, du har tilføjet."
+        },
+        "date": {
+          "name": "Dato",
+          "description": "Hvornår den blev nået. Som standard i dag."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Valgfri note. Udelad den for at beholde den nuværende note."
+        }
+      }
+    },
+    "clear_milestone": {
+      "name": "Nulstil milepæl",
+      "description": "Markerer en milepæl som ikke nået.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "milestone": {
+          "name": "Milepæl",
+          "description": "Milepælens nøgle eller ID."
+        }
+      }
+    },
+    "add_milestone": {
+      "name": "Tilføj milepæl",
+      "description": "Tilføjer din egen milepæl, nået på den angivne dato, hvis der er en.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "name": {
+          "name": "Navn",
+          "description": "Hvad babyen gjorde, f.eks. Første svømmetur."
+        },
+        "date": {
+          "name": "Dato",
+          "description": "Hvornår den blev nået. Lad feltet være tomt for at tilføje den som ikke nået endnu."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Valgfri note."
+        }
+      }
+    },
+    "delete_milestone": {
+      "name": "Slet milepæl",
+      "description": "Sletter en milepæl, du har tilføjet.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Babyen, der skal registreres for."
+        },
+        "milestone": {
+          "name": "Milepæl",
+          "description": "ID'et på den milepæl, du har tilføjet."
+        }
+      }
+    }
+  }
+}

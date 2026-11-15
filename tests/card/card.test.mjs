@@ -64,13 +64,13 @@ function snapshot(overrides = {}) {
     ],
     milestones: [
       { key: "head_up_tummy", name: "Holds head up on tummy", category: "movement", months: 2, cdc: true, tags: ["head", "tummy time"], custom: false, date: "2026-03-10", note: null },
-      { key: "crawls", name: "Crawls", category: "movement", months: 9, cdc: false, tags: ["crawl", "crawling"], custom: false, date: null, note: null },
+      { key: "crawls", name: "Crawls", category: "movement", months: 9, cdc: false, tags: ["crawl", "crawling"], i18n: { da: { name: "Kravler", tags: ["kravle", "kravler"] } }, custom: false, date: null, note: null },
       { key: "first_smile", name: "First social smile", category: "social", months: 2, cdc: true, tags: ["smile"], custom: false, date: "2026-02-20", note: "At grandma's" },
       { key: "custom_abc", name: "First swim", category: "custom", months: null, cdc: false, tags: [], custom: true, date: "2026-04-02", note: null },
       { key: "rolls_tummy_to_back", name: "Rolls from tummy to back", category: "movement", months: 6, cdc: true, tags: ["roll", "rolling", "rolls over", "turns over"], custom: false, date: null, note: null },
       { key: "sits_without_support", name: "Sits without support", category: "movement", months: 9, cdc: true, tags: ["sit", "sitting"], custom: false, date: null, note: null },
       { key: "first_steps", name: "First steps on their own", category: "movement", months: 12, cdc: false, tags: ["walk", "walking", "steps"], custom: false, date: null, note: null },
-      { key: "first_tooth", name: "First tooth", category: "firsts", months: 6, cdc: false, tags: ["tooth", "teeth", "teething"], custom: false, date: null, note: null },
+      { key: "first_tooth", name: "First tooth", category: "firsts", months: 6, cdc: false, tags: ["tooth", "teeth", "teething"], i18n: { da: { name: "Første tand", tags: ["tand", "tænder"] } }, custom: false, date: null, note: null },
     ],
     ...overrides,
   };
@@ -90,7 +90,7 @@ after(async () => {
 });
 
 /** A page with the card mounted. */
-async function mount({ config = {}, snap = snapshot(), width = 420, dark = false } = {}) {
+async function mount({ config = {}, snap = snapshot(), width = 420, dark = false, language = "en" } = {}) {
   const context = await browser.newContext({ timezoneId: "Europe/Copenhagen", viewport: { width: width + 32, height: 900 } });
   const page = await context.newPage();
   const errors = [];
@@ -100,16 +100,17 @@ async function mount({ config = {}, snap = snapshot(), width = 420, dark = false
   await page.addScriptTag({ path: CARD, type: "module" });
   await page.waitForFunction(() => customElements.get("baby-logger-card"));
   await page.evaluate(
-    ({ config, snap, sleeps, width, dark }) => {
+    ({ config, snap, sleeps, width, dark, language }) => {
       document.documentElement.classList.toggle("dark", dark);
       document.documentElement.style.setProperty("--width", `${width}px`);
       const card = document.createElement("baby-logger-card");
       card.setConfig(config);
       document.getElementById("host").appendChild(card);
       window.hass = window.makeHass(snap, sleeps);
+      window.hass.locale = { language };
       card.hass = window.hass;
     },
-    { config, snap, sleeps: SLEEPS, width, dark }
+    { config, snap, sleeps: SLEEPS, width, dark, language }
   );
   await page.waitForFunction(() => document.querySelector("baby-logger-card").shadowRoot.querySelector("ha-card > div:not(.message)"));
   await page.waitForTimeout(50);
@@ -289,6 +290,60 @@ test("wider cards get two and three columns from their width", async () => {
     assert.deepEqual(result, { classes, columns }, `width ${width}`);
     await context.close();
   }
+});
+
+test("Danish, following the Home Assistant user's language", async () => {
+  const { page, context, errors } = await mount({ language: "da", config: { parts: ["header", "tiles", "summary", "log", "growth", "milestones"] } });
+  const card = page.locator("baby-logger-card");
+  const text = (sel) => card.locator(sel).first().textContent();
+  assert.deepEqual(await card.locator(".chip").allTextContents(), ["3 bleer", "2 måltider"]);
+  assert.deepEqual((await card.locator(".tile-head").allTextContents()).map((s) => s.trim()), ["Ble", "Måltid", "Vågen"]);
+  assert.ok((await text(".tile .sub")).includes("Våd kl."), await text(".tile .sub"));
+  assert.ok((await text(".summary .sub")).includes("opvågninger · gns."), await text(".summary .sub"));
+  const titles = (await card.locator(".section-title").allTextContents()).map((s) => s.trim().split(/\s{2,}/)[0]);
+  assert.deepEqual(titles.slice(0, 2), ["Log", "Vækst"]);
+  assert.ok((await card.locator(".log").textContent()).includes("Ble: Våd"));
+  // Numbers with a decimal comma, dates in Danish.
+  assert.equal((await card.locator(".growth-latest .value").first().textContent()).trim(), "6,10 kg");
+  assert.ok((await card.locator(".growth-latest .sub").first().textContent()).includes("maj 2026"));
+  // Built-in milestones in Danish; your own keep their name.
+  assert.ok((await card.locator(".ms-head").textContent()).includes("Milepæle"));
+  assert.equal(await card.locator('.ms[data-key="crawls"] .ms-name').textContent(), "Kravler");
+  assert.equal(await card.locator('.ms[data-key="custom_abc"] .ms-name').textContent(), "First swim");
+  assert.equal(await card.locator('.ms[data-key="crawls"] .ms-when').textContent(), "Omkring 9 måneder");
+  // The add window searches Danish words.
+  await card.locator('[data-action="milestone-add-open"]').click();
+  const dialog = card.locator("dialog.ms-dialog");
+  assert.ok((await dialog.locator(".dlg-title").textContent()).includes("Tilføj milepæl"));
+  await dialog.locator("#ms-add-query").fill("tænder");
+  assert.deepEqual(await dialog.locator(".suggestion .ms-name").allTextContents(), ["Første tand"]);
+  await dialog.locator('[data-action="add-cancel"]').click();
+  await shot(page, "danish");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("a card rebuilt in Danish shows Danish straight away", async () => {
+  const { page, context } = await mount({ language: "da", config: { parts: ["header", "tiles"] } });
+  // Home Assistant builds the card again and attaches it before giving it hass.
+  const chips = await page.evaluate(() => {
+    const old = document.querySelector("baby-logger-card");
+    const card = document.createElement("baby-logger-card");
+    card.setConfig({ parts: ["header", "tiles"] });
+    old.replaceWith(card);
+    return [...card.shadowRoot.querySelectorAll(".chip")].map((c) => c.textContent);
+  });
+  assert.deepEqual(chips, ["3 bleer", "2 måltider"]);
+  await context.close();
+});
+
+test("the language option overrides Home Assistant's", async () => {
+  const { page, context } = await mount({ language: "da", config: { language: "en", parts: ["header"] } });
+  assert.deepEqual(await page.locator("baby-logger-card").locator(".chip").allTextContents(), ["3 diapers", "2 feedings"]);
+  await context.close();
+  const other = await mount({ language: "en", config: { language: "da", parts: ["header"] } });
+  assert.deepEqual(await other.page.locator("baby-logger-card").locator(".chip").allTextContents(), ["3 bleer", "2 måltider"]);
+  await other.context.close();
 });
 
 test("dark theme", async () => {

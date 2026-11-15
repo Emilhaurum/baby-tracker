@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Danish translation (dansk): setup, entity names, actions, error messages and the logbook
+  follow the Home Assistant language, and the card follows the user's language with
+  Danish dates and numbers. New card option `language` (`auto`, `en`, `da`), also in the
+  card editor. Built-in milestones have Danish names and search words.
+
 ## 1.2.1
 
 - Card: the page no longer jumps on iPhone and iPad (Safari, including the Home Assistant

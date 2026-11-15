@@ -269,3 +269,75 @@ MILESTONES: Final[tuple[Milestone, ...]] = (
 )
 
 MILESTONES_BY_KEY: Final[dict[str, Milestone]] = {m.key: m for m in MILESTONES}
+
+# Danish names and search words, by milestone key.
+MILESTONES_DA: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
+    "head_up_tummy": ("Løfter hovedet på maven", ("hoved", "løfter hovedet", "mavetid", "nakke")),
+    "head_steady": ("Holder hovedet stille, når den bæres", ("hovedkontrol", "nakke", "holder hovedet")),
+    "pushes_up": (
+        "Skubber sig op på underarmene på maven",
+        ("skubber op", "underarme", "mavetid", "armstrækning"),
+    ),
+    "rolls_tummy_to_back": (
+        "Ruller fra mave til ryg",
+        ("ruller", "rulle", "ruller rundt", "vender sig", "vende"),
+    ),
+    "rolls_back_to_tummy": (
+        "Ruller fra ryg til mave",
+        ("ruller", "rulle", "ruller rundt", "vender sig", "vende"),
+    ),
+    "sits_without_support": ("Sidder uden støtte", ("sidder", "sidde", "sidder selv", "sad")),
+    "crawls": ("Kravler", ("kravle", "kravler", "kravlede", "mavekravler", "rumpe")),
+    "pulls_to_stand": ("Trækker sig op at stå", ("står", "stå", "rejser sig", "trækker sig op")),
+    "cruises": ("Går langs møblerne", ("går langs", "møbler", "går med støtte")),
+    "pincer_grasp": (
+        "Samler ting op mellem tommel- og pegefinger",
+        ("pincetgreb", "greb", "samler op", "fingre", "griber"),
+    ),
+    "first_steps": ("Første skridt på egen hånd", ("går", "gå", "skridt", "gik", "første skridt")),
+    "walks": ("Går uden at holde fast", ("går", "gå", "går selv", "gik")),
+    "coos": ("Pludrer (“ooo”, “aah”)", ("pludre", "pludrer", "lyde", "vokaler")),
+    "laughs": ("Griner", ("grine", "griner", "grinede", "fniser", "klukker")),
+    "babbles": ("Babler (“mamama”, “bababa”)", ("bable", "babler", "mama", "dada", "stavelser")),
+    "responds_to_name": ("Kigger, når du siger navnet", ("navn", "reagerer på navn", "kigger")),
+    "waves": ("Vinker farvel", ("vinke", "vinker", "farvel", "hej hej")),
+    "first_word": (
+        "Første ord (“mor”, “far” …)",
+        ("ord", "tale", "taler", "siger", "sagde", "mor", "far", "mama", "dada"),
+    ),
+    "points": ("Peger for at vise dig noget", ("pege", "peger", "viser")),
+    "three_words": ("Siger tre eller flere ord", ("ord", "ordforråd", "tale", "taler")),
+    "two_word_phrases": ("Sætter to ord sammen", ("sætning", "to ord", "tale", "taler")),
+    "first_smile": ("Første sociale smil", ("smil", "smiler", "smilede", "socialt smil")),
+    "knows_familiar_people": ("Kender velkendte personer", ("genkender", "kendte ansigter", "fremmede")),
+    "plays_peekaboo": ("Leger borte-tit-tit", ("borte tit tit", "tit tit", "gemmeleg", "titte")),
+    "pat_a_cake": ("Klapper i hænderne", ("klappe", "klapper", "klap", "klappe kage")),
+    "first_solid_food": (
+        "Første faste føde",
+        ("mad", "grød", "mos", "smagsportioner", "spiser", "første måltid"),
+    ),
+    "first_tooth": ("Første tand", ("tand", "tænder", "tandfrembrud", "får tænder")),
+    "drinks_from_cup": ("Drikker af en åben kop (med hjælp)", ("kop", "drikke", "drikker", "åben kop")),
+    "feeds_self": ("Spiser selv med fingrene", ("spiser selv", "fingermad", "spiser")),
+    "sleeps_through_night": ("Sover hele natten", ("søvn", "sover", "nat", "sov igennem")),
+    "first_haircut": ("Første klipning", ("klipning", "hår", "frisør", "klippe")),
+}
+
+
+# The same for every snapshot, so built once.
+_TRANSLATIONS: Final[dict[str, dict[str, dict[str, object]]]] = {
+    key: {"da": {"name": name, "tags": list(tags)}} for key, (name, tags) in MILESTONES_DA.items()
+}
+
+
+def milestone_translations(key: str) -> dict[str, dict[str, object]]:
+    """Return a built-in milestone's names and search words in other languages."""
+    return _TRANSLATIONS[key]
+
+
+def localized_milestone_name(key: str, fallback: str, language: str | None) -> str:
+    """Return a built-in milestone's name in a language, or ``fallback``."""
+    code = (language or "").lower().replace("_", "-").split("-")[0]
+    if code == "da" and key in MILESTONES_DA:
+        return MILESTONES_DA[key][0]
+    return fallback
