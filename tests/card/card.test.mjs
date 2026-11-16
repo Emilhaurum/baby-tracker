@@ -346,6 +346,42 @@ test("the language option overrides Home Assistant's", async () => {
   await other.context.close();
 });
 
+test("tapping the sleep timeline shows a period and its length", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["timeline"] } });
+  const card = page.locator("baby-logger-card");
+  const today = card.locator(".tl-row:not(.tl-axis)").first();
+  // Tap today's line at 03:00 (the night's sleep, 21:30-06:30) and at 09:00 (awake).
+  const tapAt = async (row, hours) => {
+    const box = await row.locator(".tl-bar").boundingBox();
+    await page.mouse.click(box.x + (box.width * hours) / 24, box.y + box.height / 2);
+  };
+  await tapAt(today, 3);
+  const detail = card.locator(".tl-detail");
+  assert.equal(await detail.count(), 1);
+  assert.match(await detail.textContent(), /Asleep .*9h 00m/);
+  assert.ok(await detail.evaluate((d) => d.classList.contains("sleep")));
+  assert.equal(await card.locator(".tl-seg").count(), 1);
+  await shot(page, "timeline-pick");
+  // It stays across updates.
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(30);
+  assert.equal(await card.locator(".tl-detail").count(), 1);
+  // Another place shows the awake period instead.
+  await tapAt(today, 9);
+  assert.match(await card.locator(".tl-detail").textContent(), /Awake .*5h 50m/);
+  // The same place again, or the close button, closes it.
+  await tapAt(today, 9);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  await tapAt(today, 9);
+  await card.locator('[data-action="timeline-close"]').click();
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // Later today hasn't happened: nothing to show.
+  await tapAt(today, 20);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("dark theme", async () => {
   const { page, context } = await mount({ config: { parts: ["header", "buttons", "summary"] }, dark: true });
   const bg = await page.locator("baby-logger-card .qb").first().evaluate((e) => getComputedStyle(e).backgroundColor);

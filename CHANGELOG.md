@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Card: tap a line of the sleep timeline to see the sleep or awake period there, with
+  its start, end and length; the period is outlined on the line. A sleep across midnight
+  is shown whole. On lines averaging several days it shows on how many of them the baby
+  was asleep at that time.
+
 ## 1.3.0
 
 - Danish translation (dansk): setup, entity names, actions, error messages and the logbook

@@ -205,6 +205,13 @@ export const I18N = {
     "tl.day": "{label}: {value} asleep",
     "tl.avg": "{label}: {value} asleep per day on average",
     "tl.darker": "Darker = asleep on more of the {n} days",
+    "tl.pick_sleep": "Asleep {from}–{to} · {duration}",
+    "tl.pick_sleep_now": "Asleep since {from} · {duration} so far",
+    "tl.pick_awake": "Awake {from}–{to} · {duration}",
+    "tl.pick_awake_now": "Awake since {from} · {duration} so far",
+    "tl.pick_awake_until": "Awake until {to}",
+    "tl.pick_group": "{time}: asleep on {n} of {m} days",
+    "tl.close": "Close",
     "nights.title": "Night sleep",
     "nights.tip_asleep": "{h} asleep",
     "nights.tip_awake": "{h} awake",
@@ -392,6 +399,13 @@ export const I18N = {
     "tl.day": "{label}: {value} søvn",
     "tl.avg": "{label}: {value} søvn pr. dag i gennemsnit",
     "tl.darker": "Mørkere = sov på flere af de {n} dage",
+    "tl.pick_sleep": "Sov {from}–{to} · {duration}",
+    "tl.pick_sleep_now": "Sover siden {from} · {duration} indtil nu",
+    "tl.pick_awake": "Vågen {from}–{to} · {duration}",
+    "tl.pick_awake_now": "Vågen siden {from} · {duration} indtil nu",
+    "tl.pick_awake_until": "Vågen indtil {to}",
+    "tl.pick_group": "{time}: sov på {n} af {m} dage",
+    "tl.close": "Luk",
     "nights.title": "Nattesøvn",
     "nights.tip_asleep": "{h} søvn",
     "nights.tip_awake": "{h} vågen",
@@ -756,7 +770,80 @@ function timelineLabel(row, now) {
   return new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short" }).formatRange(row.start, last);
 }
 
-function timelineHtml(rows, settings, now) {
+/**
+ * The sleep or awake period at a point of a one-day timeline line (`fraction` of the
+ * line, 0..1). `intervals` are all loaded sleeps, so a sleep across midnight is found
+ * whole. Returns { kind: "sleep" | "awake", from, to, ongoing } (from is null when the
+ * awake period started before the loaded sleeps), or null for a point in the future.
+ */
+export function timelineSegmentAt(intervals, row, fraction, now = new Date()) {
+  const at = new Date(+row.start + fraction * (row.end - row.start));
+  if (at > now) return null;
+  const sleep = intervals.find(([s, e]) => s <= at && at < e);
+  if (sleep) {
+    const ongoing = sleep[1] >= now;
+    return { kind: "sleep", from: sleep[0], to: ongoing ? now : sleep[1], ongoing };
+  }
+  let from = null;
+  let to = null;
+  for (const [s, e] of intervals) {
+    if (e <= at && (!from || e > from)) from = e;
+    if (s > at && (!to || s < to)) to = s;
+  }
+  return { kind: "awake", from, to: to ?? now, ongoing: !to };
+}
+
+/**
+ * For a line averaging several days: on how many of its days (that have reached that
+ * time) the baby was asleep at the clock time at `fraction` of the line.
+ */
+export function timelineSlotAt(intervals, row, fraction, now = new Date()) {
+  let asleep = 0;
+  let days = 0;
+  let time = null;
+  for (let i = 0; i < row.days; i++) {
+    const start = new Date(row.start);
+    start.setDate(start.getDate() + i);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const at = new Date(+start + fraction * (end - start));
+    time ??= at;
+    if (at > now) continue;
+    days++;
+    if (intervals.some(([s, e]) => s <= at && at < e)) asleep++;
+  }
+  return { time, asleep, days };
+}
+
+/** A time, with the weekday when it isn't on the same day as `other`. */
+function clockOn(date, other) {
+  const time = clock(date.toISOString());
+  if (startOfDay(date).getTime() === startOfDay(other).getTime()) return time;
+  return `${date.toLocaleDateString(LOCALE, { weekday: "short" })} ${time}`;
+}
+
+/** The text and highlight for a tapped point of a timeline line. */
+export function timelinePick(intervals, row, fraction, now = new Date()) {
+  if (row.days > 1) {
+    const slot = timelineSlotAt(intervals, row, fraction, now);
+    if (!slot.days) return null;
+    return { text: t("tl.pick_group", { time: clock(slot.time.toISOString()), n: slot.asleep, m: slot.days }) };
+  }
+  const seg = timelineSegmentAt(intervals, row, fraction, now);
+  if (!seg) return null;
+  const length = row.end - row.start;
+  const clip = (d) => Math.min(Math.max((d - row.start) / length, 0), row.elapsed ?? 1);
+  const highlight = [seg.from ? clip(seg.from) : 0, clip(seg.to)];
+  const duration = seg.from ? formatDuration(seg.to - seg.from) : "";
+  const prefix = seg.kind === "sleep" ? "tl.pick_sleep" : "tl.pick_awake";
+  let text;
+  if (!seg.from) text = t("tl.pick_awake_until", { to: clockOn(seg.to, seg.to) });
+  else if (seg.ongoing) text = t(`${prefix}_now`, { from: clockOn(seg.from, seg.to), duration });
+  else text = t(prefix, { from: clockOn(seg.from, seg.to), to: clock(seg.to.toISOString()), duration });
+  return { kind: seg.kind, text, highlight };
+}
+
+function timelineHtml(rows, settings, now, pick = null) {
   const ticks = [0, 6, 12, 18, 24]
     .map((h) => {
       const hour = String((settings.startHour + h) % 24).padStart(2, "0");
@@ -768,8 +855,16 @@ function timelineHtml(rows, settings, now) {
       const label = timelineLabel(row, now);
       const value = hours(row.hours);
       const title = t(row.days === 1 ? "tl.day" : "tl.avg", { label, value });
-      return `<div class="tl-row" title="${esc(title)}"><span class="tl-label">${esc(label)}</span>
-        <span class="tl-bar" style="background:${timelineGradient(row)}"></span><span class="tl-value">${value}</span></div>`;
+      const picked = pick && pick.start === row.start.getTime() ? pick : null;
+      const marks = picked
+        ? `${picked.highlight ? `<span class="tl-seg" style="left:${pct(picked.highlight[0])};width:${pct(Math.max(0, picked.highlight[1] - picked.highlight[0]))}"></span>` : ""}<span class="tl-mark" style="left:${pct(picked.fraction)}"></span>`
+        : "";
+      const detail = picked
+        ? `<div class="tl-detail${picked.kind ? ` ${picked.kind}` : ""}"><span>${esc(picked.text)}</span>
+            <button class="icon" title="${esc(t("tl.close"))}" aria-label="${esc(t("tl.close"))}" data-action="timeline-close"><ha-icon icon="mdi:close"></ha-icon></button></div>`
+        : "";
+      return `<div class="tl-row${picked ? " picked" : ""}" title="${esc(title)}" data-action="timeline-pick" data-start="${row.start.getTime()}"><span class="tl-label">${esc(label)}</span>
+        <span class="tl-bar" style="background:${timelineGradient(row)}">${marks}</span><span class="tl-value">${value}</span></div>${detail}`;
     })
     .join("");
   const legendItems = [
@@ -1785,6 +1880,22 @@ class BabyTrackerCard extends HTMLElement {
         this._milestoneForm = {};
         this._render();
         break;
+      case "timeline-pick": {
+        const bar = target.querySelector(".tl-bar");
+        const rect = bar?.getBoundingClientRect();
+        if (!rect || !rect.width) break;
+        const fraction = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 0.9999);
+        const start = Number(target.dataset.start);
+        // Tapping the same line close to the same place again closes it.
+        const same = this._tlPick && this._tlPick.start === start && Math.abs(this._tlPick.fraction - fraction) < 0.02;
+        this._tlPick = same ? null : { start, fraction };
+        this._render();
+        break;
+      }
+      case "timeline-close":
+        this._tlPick = null;
+        this._render();
+        break;
       case "milestones-more":
         this._msShowAll = !this._msShowAll;
         this._render();
@@ -2039,7 +2150,18 @@ class BabyTrackerCard extends HTMLElement {
       },
       timeline: () => {
         const settings = timelineSettings(cfg);
-        const content = intervals ? timelineHtml(timelineRows(intervals, settings, now), settings, now) : pending;
+        let content = pending;
+        if (intervals) {
+          const rows = timelineRows(intervals, settings, now);
+          // The tapped point, kept by the line's date so it survives the minute updates.
+          let pick = null;
+          const row = this._tlPick && rows.find((r) => r.start.getTime() === this._tlPick.start);
+          if (row) {
+            const detail = timelinePick(intervals, row, this._tlPick.fraction, now);
+            if (detail) pick = { ...detail, start: this._tlPick.start, fraction: this._tlPick.fraction };
+          }
+          content = timelineHtml(rows, settings, now, pick);
+        }
         const title = esc(settings.group === 1 ? t("tl.title") : t("tl.title_avg", { n: settings.group }));
         return `
         <div class="section">
@@ -2620,7 +2742,14 @@ const STYLE = `
   .timeline.grouped .tl-row { grid-template-columns: 7.5em 1fr 3.4em; }
   .tl-label { color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tl-value { text-align: right; font-variant-numeric: tabular-nums; }
-  .tl-bar { height: 12px; border-radius: 3px; background-color: var(--divider-color); }
+  .tl-bar { position: relative; height: 12px; border-radius: 3px; background-color: var(--divider-color); }
+  .tl-row[data-action] { cursor: pointer; }
+  .tl-seg { position: absolute; top: -2px; bottom: -2px; border: 2px solid var(--primary-text-color); border-radius: 4px; box-sizing: border-box; }
+  .tl-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--primary-text-color); }
+  .tl-detail { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; padding: 4px 4px 4px 10px; border-radius: 8px;
+    background: var(--secondary-background-color); font-size: 0.85em; border-left: 4px solid var(--bt-awake); }
+  .tl-detail.sleep { border-left-color: var(--bt-sleep); }
+  .tl-detail span { flex: 1; }
   .tl-ticks { position: relative; height: 1.2em; color: var(--secondary-text-color); }
   .tl-ticks span { position: absolute; transform: translateX(-50%); }
   .tl-ticks span:first-child { transform: none; }
