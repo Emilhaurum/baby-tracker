@@ -7,7 +7,8 @@
  *   show_summary: true
  *   show_trends: true
  *   show_log: true
- *   log_entries: 10
+ *   log_entries: 20           entries in the log (scroll to see them all)
+ *   log_visible: 6            entries shown before the log scrolls
  *   days: 7
  *   show_timeline: true
  *   timeline_days: 14         days shown in the sleep timeline
@@ -62,7 +63,8 @@ const DEFAULTS = {
   show_trends: true,
   show_timeline: true,
   show_log: true,
-  log_entries: 10,
+  log_entries: 20,
+  log_visible: 6,
   days: 7,
   timeline_days: 14,
   timeline_group: 1,
@@ -308,7 +310,8 @@ export const I18N = {
     "ed.night_from": "Night from",
     "ed.to": "to",
     "ed.night_hint": "Leave the night times empty to use the integration's Night starts / Night ends settings.",
-    "ed.log_entries": "Log entries",
+    "ed.log_entries": "Log entries in total (scroll to see them)",
+    "ed.log_visible": "Log entries shown before scrolling",
     "ed.units": "Growth units",
     "ed.metric": "Metric (kg, cm)",
     "ed.imperial": "Imperial (lb + oz, in)",
@@ -495,7 +498,8 @@ export const I18N = {
     "ed.night_from": "Nat fra",
     "ed.to": "til",
     "ed.night_hint": "Lad nattetiderne være tomme for at bruge integrationens indstillinger for Natten starter / Natten slutter.",
-    "ed.log_entries": "Linjer i loggen",
+    "ed.log_entries": "Linjer i loggen i alt (rul for at se dem)",
+    "ed.log_visible": "Linjer vist i loggen, før den ruller",
     "ed.units": "Enheder for vækst",
     "ed.metric": "Metrisk (kg, cm)",
     "ed.imperial": "Imperial (lb + oz, in)",
@@ -1875,7 +1879,10 @@ class BabyTrackerCard extends HTMLElement {
         const width = entries[0].contentRect.width;
         // Changing the layout changes the card's height: not inside the observer (that
         // would loop), and with the page kept still like any other change.
-        requestAnimationFrame(() => this._setWidthClasses(width, true));
+        requestAnimationFrame(() => {
+          this._setWidthClasses(width, true);
+          this._sizeLog(this._logScrollTop());
+        });
       }).observe(card);
     }
     this._card = card;
@@ -1927,6 +1934,7 @@ class BabyTrackerCard extends HTMLElement {
     }
     const card = this._card;
     noteScrollAnchor();
+    const logScroll = this._logScrollTop();
     const parts = this._renderData(this._data);
     parts.forEach(([name, html], index) => {
       if (name === keep) return;
@@ -1943,9 +1951,40 @@ class BabyTrackerCard extends HTMLElement {
       if (anchor) anchor.before(nodes);
       else card.append(nodes);
     });
+    this._sizeLog(logScroll);
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount && amount !== active) amount.value = this._bottleAmount;
     this._pendingRender = true;
+  }
+
+  /** How far the log is scrolled, to keep it there when the card is rebuilt. */
+  _logScrollTop() {
+    return this._card?.querySelector("ul.log-scroll")?.scrollTop || 0;
+  }
+
+  /**
+   * Make the log as tall as its first `log_visible` entries (day headings included), so
+   * the rest are scrolled to. Measured, because long entries wrap on narrow screens.
+   */
+  _sizeLog(scrollTop = 0) {
+    const list = this._card?.querySelector("ul.log-scroll");
+    if (!list) return;
+    const visible = clampInt(this._config.log_visible, 1, 100, 6);
+    const entries = list.querySelectorAll(":scope > li:not(.day)");
+    if (entries.length <= visible) {
+      list.classList.remove("scrolls");
+      list.style.maxHeight = "";
+      return;
+    }
+    const height = entries[visible - 1].getBoundingClientRect().bottom - list.getBoundingClientRect().top;
+    if (!(height > 0)) return; // not laid out yet: sized again on the next render or resize
+    list.classList.add("scrolls");
+    list.style.maxHeight = `${Math.ceil(height)}px`;
+    list.scrollTop = scrollTop;
+    // A fade at the bottom shows there is more (phones hide the scrollbar), until the end.
+    const atEnd = () => list.classList.toggle("at-end", list.scrollTop + list.clientHeight >= list.scrollHeight - 2);
+    list.onscroll = atEnd;
+    atEnd();
   }
 
   _render() {
@@ -1965,6 +2004,7 @@ class BabyTrackerCard extends HTMLElement {
       // not every input type has a selection
     }
     noteScrollAnchor();
+    const logScroll = this._logScrollTop();
     if (this._error) {
       card.innerHTML = `<div class="message error">${esc(this._error.key ? t(this._error.key) : this._error)}</div>`;
     } else if (!this._data) {
@@ -1972,6 +2012,7 @@ class BabyTrackerCard extends HTMLElement {
     } else {
       card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
     }
+    this._sizeLog(logScroll);
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount) amount.value = this._bottleAmount;
     const focused = focusId ? this.shadowRoot.getElementById(focusId) : null;
@@ -2519,7 +2560,7 @@ class BabyTrackerCard extends HTMLElement {
   _logHtml(d, now) {
     const entries = [...(d.events || [])]
       .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
-      .slice(0, Number(this._config.log_entries) || 10);
+      .slice(0, clampInt(this._config.log_entries, 1, 100, 20));
     let lastDay = "";
     const rows = entries
       .map((e) => {
@@ -2535,7 +2576,7 @@ class BabyTrackerCard extends HTMLElement {
     return `
         <div class="section">
           <div class="section-title">${esc(t("log.title"))}</div>
-          ${rows ? `<ul class="log">${rows}</ul>` : `<div class="message">${esc(t("nothing.full"))}</div>`}
+          ${rows ? `<ul class="log log-scroll">${rows}</ul>` : `<div class="message">${esc(t("nothing.full"))}</div>`}
         </div>`;
   }
 }
@@ -2697,6 +2738,10 @@ const STYLE = `
   .suggestion ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: none; }
   .suggestion.done ha-icon { color: var(--success-color, #43a047); }
   .log { list-style: none; margin: 0; padding: 0; }
+  .log.scrolls { overflow-y: auto; border-bottom: 1px solid var(--divider-color); }
+  .log.scrolls:not(.at-end) { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); }
+  .log.scrolls li:last-child { border-bottom: none; }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .log li.day { border: none; padding-top: 10px; font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; }
   .log .text { flex: 1; }
@@ -2869,6 +2914,7 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>${esc(t("ed.nights"))} <input type="number" min="1" max="${NIGHTS_MAX}" data-key="night_days" value="${esc(c.night_days)}"></label>
         <label>${esc(t("ed.night_from"))} <input type="time" data-key="night_start" value="${esc(c.night_start)}"> ${esc(t("ed.to"))} <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
         <small>${esc(t("ed.night_hint"))}</small>
+        <label>${esc(t("ed.log_visible"))} <input type="number" min="1" max="100" data-key="log_visible" value="${esc(c.log_visible)}"></label>
         <label>${esc(t("ed.log_entries"))} <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
         <label>${esc(t("ed.units"))} <select data-key="units">
           <option value="metric" ${c.units === "imperial" ? "" : "selected"}>${esc(t("ed.metric"))}</option>

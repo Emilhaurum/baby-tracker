@@ -346,6 +346,67 @@ test("the language option overrides Home Assistant's", async () => {
   await other.context.close();
 });
 
+/** A snapshot with `n` diapers, one every 30 minutes going back from 14:30. */
+function manyEntries(n) {
+  const events = Array.from({ length: n }, (_, i) => {
+    const at = new Date(new Date(iso("14:30")).getTime() - i * 30 * 60000).toISOString();
+    return { id: `d${i}`, kind: "diaper", start: at, end: null, diaper_type: i % 2 ? "dirty" : "wet" };
+  });
+  return snapshot({ events });
+}
+
+test("the log shows log_visible entries and scrolls to the rest", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["log"] }, snap: manyEntries(30) });
+  const list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  // 20 entries by default, 6 of them visible (with the day headings between them).
+  assert.equal(await list.locator("li:not(.day)").count(), 20);
+  const sizes = () =>
+    list.evaluate((ul) => {
+      const top = ul.getBoundingClientRect().top;
+      const entries = [...ul.querySelectorAll(":scope > li:not(.day)")];
+      return {
+        client: ul.clientHeight,
+        scroll: ul.scrollHeight,
+        sixth: Math.ceil(entries[5].getBoundingClientRect().bottom - top),
+        overflow: getComputedStyle(ul).overflowY,
+      };
+    });
+  let size = await sizes();
+  assert.ok(Math.abs(size.client - size.sixth) <= 2, JSON.stringify(size));
+  assert.ok(size.scroll > size.client + 100, JSON.stringify(size));
+  assert.equal(size.overflow, "auto");
+  // Faded at the bottom until scrolled to the end.
+  assert.equal(await list.evaluate((ul) => ul.classList.contains("at-end")), false);
+  await shot(page, "log-scroll");
+  await list.evaluate((ul) => {
+    ul.scrollTop = ul.scrollHeight;
+    ul.dispatchEvent(new Event("scroll"));
+  });
+  assert.equal(await list.evaluate((ul) => ul.classList.contains("at-end")), true);
+
+  // Scrolled down, the list stays there when the card is updated.
+  await list.evaluate((ul) => (ul.scrollTop = 200));
+  await page.evaluate((snap) => window.hass.push(snap), manyEntries(30));
+  await page.waitForTimeout(30);
+  assert.equal(await list.evaluate((ul) => ul.scrollTop), 200);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("log_visible and log_entries can be changed; short logs don't scroll", async () => {
+  let { page, context } = await mount({ config: { parts: ["log"], log_visible: 3, log_entries: 8 }, snap: manyEntries(30) });
+  let list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  assert.equal(await list.locator("li:not(.day)").count(), 8);
+  const third = await list.evaluate((ul) => Math.ceil(ul.querySelectorAll(":scope > li:not(.day)")[2].getBoundingClientRect().bottom - ul.getBoundingClientRect().top));
+  assert.ok(Math.abs((await list.evaluate((ul) => ul.clientHeight)) - third) <= 2);
+  await context.close();
+  ({ page, context } = await mount({ config: { parts: ["log"] }, snap: manyEntries(4) }));
+  list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  assert.equal(await list.evaluate((ul) => ul.classList.contains("scrolls")), false);
+  assert.equal(await list.evaluate((ul) => ul.style.maxHeight), "");
+  await context.close();
+});
+
 test("dark theme", async () => {
   const { page, context } = await mount({ config: { parts: ["header", "buttons", "summary"] }, dark: true });
   const bg = await page.locator("baby-logger-card .qb").first().evaluate((e) => getComputedStyle(e).backgroundColor);

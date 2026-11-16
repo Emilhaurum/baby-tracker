@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Card: the log shows 6 entries and scrolls to the rest, up to 20 (new option
+  `log_visible`; `log_entries` now defaults to 20). A fade at the bottom shows there is
+  more, and the log keeps its scroll position when the card updates.
+
 ## 1.3.0
 
 - Danish translation (dansk): setup, entity names, actions, error messages and the logbook
