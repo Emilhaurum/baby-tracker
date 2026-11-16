@@ -97,3 +97,37 @@ test("lines averaging several days count the days asleep at that time", () => {
   assert.deepEqual((({ asleep, days }) => ({ asleep, days }))(timelineSlotAt(SLEEPS, line, f(16), NOW)), { asleep: 0, days: 2 });
   assert.equal(timelinePick(SLEEPS, line, f(3), NOW).text, `${hm("2026-05-03T03:00:00+02:00")}: asleep on 2 of 3 days`);
 });
+
+test("an awake period still going with no sleep logged before it", () => {
+  const [today] = rows([]);
+  const seg = timelineSegmentAt([], today, f(9), NOW);
+  assert.deepEqual({ kind: seg.kind, from: seg.from, ongoing: seg.ongoing }, { kind: "awake", from: null, ongoing: true });
+  assert.equal(timelinePick([], today, f(9), NOW).text, "Awake: no sleep logged around this time");
+  setLanguage("da");
+  assert.equal(timelinePick([], today, f(9), NOW).text, "Vågen: ingen søvn registreret omkring dette tidspunkt");
+});
+
+test("lines starting in the evening name the other day", () => {
+  // Lines run 18:00-18:00; the line labelled 4 May covers Mon 18:00 to Tue 18:00.
+  const nap = [[at("2026-05-05T13:00:00+02:00"), at("2026-05-05T14:00:00+02:00")]];
+  const [line] = timelineRows(nap, { group: 1, lines: 1, startHour: 18 }, NOW);
+  assert.equal(line.start.toISOString(), at("2026-05-04T18:00:00+02:00").toISOString());
+  // 13:30 is 19.5 hours into the line.
+  const text = timelinePick(nap, line, 19.5 / 24, NOW).text;
+  assert.equal(text, `Asleep Tue ${hm("2026-05-05T13:00:00+02:00")}–Tue ${hm("2026-05-05T14:00:00+02:00")} · 1h 00m`);
+});
+
+test("averaged lines use the same days as the shading, also across daylight saving", () => {
+  // A week from Mon 23 March: Sunday 29 March is 23 hours long in Copenhagen.
+  const now = at("2026-03-29T23:59:00+02:00");
+  const sleeps = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(2026, 2, 23 + i);
+    return [new Date(day.getFullYear(), day.getMonth(), day.getDate(), 5, 0), new Date(day.getFullYear(), day.getMonth(), day.getDate(), 7, 0)];
+  });
+  const [line] = timelineRows(sleeps, { group: 7, lines: 1, startHour: 0 }, now);
+  assert.equal(line.dayBounds.length, 7);
+  // 06:00 on the axis: asleep every day, the DST day included, and labelled 06:00.
+  const slot = timelineSlotAt(sleeps, line, f(6), now);
+  assert.deepEqual({ asleep: slot.asleep, days: slot.days, minutes: slot.minutes }, { asleep: 7, days: 7, minutes: 360 });
+  assert.equal(timelinePick(sleeps, line, f(6), now).text, `${hm("2026-03-23T06:00:00+01:00")}: asleep on 7 of 7 days`);
+});

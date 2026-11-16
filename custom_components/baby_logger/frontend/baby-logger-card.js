@@ -210,6 +210,7 @@ export const I18N = {
     "tl.pick_awake": "Awake {from}–{to} · {duration}",
     "tl.pick_awake_now": "Awake since {from} · {duration} so far",
     "tl.pick_awake_until": "Awake until {to}",
+    "tl.pick_awake_unknown": "Awake: no sleep logged around this time",
     "tl.pick_group": "{time}: asleep on {n} of {m} days",
     "tl.close": "Close",
     "nights.title": "Night sleep",
@@ -404,6 +405,7 @@ export const I18N = {
     "tl.pick_awake": "Vågen {from}–{to} · {duration}",
     "tl.pick_awake_now": "Vågen siden {from} · {duration} indtil nu",
     "tl.pick_awake_until": "Vågen indtil {to}",
+    "tl.pick_awake_unknown": "Vågen: ingen søvn registreret omkring dette tidspunkt",
     "tl.pick_group": "{time}: sov på {n} af {m} dage",
     "tl.close": "Luk",
     "nights.title": "Nattesøvn",
@@ -702,6 +704,9 @@ export function timelineRows(intervals, settings, now = new Date()) {
       // One day: hours asleep (so far). Several: average hours asleep per 24 h.
       hours: settings.group === 1 ? asleep / 3600000 : elapsed ? (asleep / elapsed) * 24 : null,
       elapsed: days.length === 1 ? days[0].elapsed / days[0].length : null,
+      // Each day's [start, end], oldest first, and the hour lines start at (for taps).
+      dayBounds: days.map((d) => [d.start, d.end]),
+      startHour: settings.startHour,
     };
     if (settings.group === 1) {
       const d = days[0];
@@ -800,25 +805,21 @@ export function timelineSegmentAt(intervals, row, fraction, now = new Date()) {
 export function timelineSlotAt(intervals, row, fraction, now = new Date()) {
   let asleep = 0;
   let days = 0;
-  let time = null;
-  for (let i = 0; i < row.days; i++) {
-    const start = new Date(row.start);
-    start.setDate(start.getDate() + i);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+  for (const [start, end] of row.dayBounds) {
     const at = new Date(+start + fraction * (end - start));
-    time ??= at;
     if (at > now) continue;
     days++;
     if (intervals.some(([s, e]) => s <= at && at < e)) asleep++;
   }
-  return { time, asleep, days };
+  // The time on the axis, the same for every day of the line.
+  const minutes = Math.round((row.startHour ?? 0) * 60 + fraction * 1440) % 1440;
+  return { minutes, asleep, days };
 }
 
-/** A time, with the weekday when it isn't on the same day as `other`. */
-function clockOn(date, other) {
-  const time = clock(date.toISOString());
-  if (startOfDay(date).getTime() === startOfDay(other).getTime()) return time;
+/** A time, with the weekday when it isn't on the line's own (labelled) day. */
+function clockOn(date, lineStart) {
+  const time = clock(date);
+  if (startOfDay(date).getTime() === startOfDay(lineStart).getTime()) return time;
   return `${date.toLocaleDateString(LOCALE, { weekday: "short" })} ${time}`;
 }
 
@@ -827,7 +828,8 @@ export function timelinePick(intervals, row, fraction, now = new Date()) {
   if (row.days > 1) {
     const slot = timelineSlotAt(intervals, row, fraction, now);
     if (!slot.days) return null;
-    return { text: t("tl.pick_group", { time: clock(slot.time.toISOString()), n: slot.asleep, m: slot.days }) };
+    const time = clock(new Date(2000, 0, 1, Math.floor(slot.minutes / 60), slot.minutes % 60));
+    return { text: t("tl.pick_group", { time, n: slot.asleep, m: slot.days }) };
   }
   const seg = timelineSegmentAt(intervals, row, fraction, now);
   if (!seg) return null;
@@ -836,10 +838,11 @@ export function timelinePick(intervals, row, fraction, now = new Date()) {
   const highlight = [seg.from ? clip(seg.from) : 0, clip(seg.to)];
   const duration = seg.from ? formatDuration(seg.to - seg.from) : "";
   const prefix = seg.kind === "sleep" ? "tl.pick_sleep" : "tl.pick_awake";
+  const on = (d) => clockOn(d, row.start);
   let text;
-  if (!seg.from) text = t("tl.pick_awake_until", { to: clockOn(seg.to, seg.to) });
-  else if (seg.ongoing) text = t(`${prefix}_now`, { from: clockOn(seg.from, seg.to), duration });
-  else text = t(prefix, { from: clockOn(seg.from, seg.to), to: clock(seg.to.toISOString()), duration });
+  if (!seg.from) text = seg.ongoing ? t("tl.pick_awake_unknown") : t("tl.pick_awake_until", { to: on(seg.to) });
+  else if (seg.ongoing) text = t(`${prefix}_now`, { from: on(seg.from), duration });
+  else text = t(prefix, { from: on(seg.from), to: on(seg.to), duration });
   return { kind: seg.kind, text, highlight };
 }
 
@@ -1883,12 +1886,19 @@ class BabyTrackerCard extends HTMLElement {
       case "timeline-pick": {
         const bar = target.querySelector(".tl-bar");
         const rect = bar?.getBoundingClientRect();
-        if (!rect || !rect.width) break;
+        // Only taps on the bar (a little either side is fine), not on the date or hours.
+        if (!rect || !rect.width || ev.clientX < rect.left - 6 || ev.clientX > rect.right + 6) break;
         const fraction = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 0.9999);
         const start = Number(target.dataset.start);
         // Tapping the same line close to the same place again closes it.
-        const same = this._tlPick && this._tlPick.start === start && Math.abs(this._tlPick.fraction - fraction) < 0.02;
-        this._tlPick = same ? null : { start, fraction };
+        if (this._tlPick && this._tlPick.start === start && Math.abs(this._tlPick.fraction - fraction) < 0.02) {
+          this._tlPick = null;
+        } else {
+          // Nothing to show there (later today): leave it as it is.
+          const row = this._tlShown?.rows.find((r) => r.start.getTime() === start);
+          if (!row || !timelinePick(this._tlShown.intervals, row, fraction, new Date())) break;
+          this._tlPick = { start, fraction };
+        }
         this._render();
         break;
       }
@@ -2153,6 +2163,7 @@ class BabyTrackerCard extends HTMLElement {
         let content = pending;
         if (intervals) {
           const rows = timelineRows(intervals, settings, now);
+          this._tlShown = { rows, intervals };
           // The tapped point, kept by the line's date so it survives the minute updates.
           let pick = null;
           const row = this._tlPick && rows.find((r) => r.start.getTime() === this._tlPick.start);

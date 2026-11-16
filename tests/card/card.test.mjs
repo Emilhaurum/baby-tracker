@@ -375,8 +375,16 @@ test("tapping the sleep timeline shows a period and its length", async () => {
   await tapAt(today, 9);
   await card.locator('[data-action="timeline-close"]').click();
   assert.equal(await card.locator(".tl-detail").count(), 0);
-  // Later today hasn't happened: nothing to show.
+  // Later today hasn't happened: nothing to show, now or later.
   await tapAt(today, 20);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  await page.clock.fastForward("06:00:00");
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(30);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // Taps on the date or the hours aren't taps on the line.
+  await today.locator(".tl-label").click();
+  await today.locator(".tl-value").click();
   assert.equal(await card.locator(".tl-detail").count(), 0);
   assert.deepEqual(errors, []);
   await context.close();
