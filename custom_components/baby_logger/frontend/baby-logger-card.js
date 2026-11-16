@@ -617,6 +617,12 @@ export function dailyTrends(events, days, now = new Date(), sleepStart = null) {
   return buckets;
 }
 
+/** A whole number from 1 to `max`; anything else (0, empty, nonsense) gives `fallback`. */
+const positiveInt = (value, max, fallback) => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, max) : fallback;
+};
+
 const clampInt = (value, min, max, fallback) => {
   const n = Math.round(Number(value));
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
@@ -1884,7 +1890,8 @@ class BabyTrackerCard extends HTMLElement {
           // Entries wrap differently at another width; height changes don't matter here.
           if (width !== this._logWidth) {
             this._logWidth = width;
-            this._keepLogPosition(() => {});
+            // Entries have already re-wrapped: use the position saved while scrolling.
+            this._sizeLog(this._logAnchor);
           }
         });
       }).observe(card);
@@ -1927,12 +1934,29 @@ class BabyTrackerCard extends HTMLElement {
   _backgroundRender() {
     this._applyLanguage();
     const active = this._fieldFocused() ? this.shadowRoot.activeElement : null;
-    if (!active) {
+    // Someone is scrolling the log: rebuilding it would stop the scroll mid-flick.
+    const logBusy = Date.now() - (this._logScrolledAt || 0) < 800 && Boolean(this._card?.querySelector("ul.log-scroll"));
+    if (!active && !logBusy) {
       this._render();
       return;
     }
-    const keep = active.closest("[data-part]")?.dataset.part;
-    if (!keep || !this._data || this._error) {
+    const keep = new Set();
+    if (active) {
+      const part = active.closest("[data-part]")?.dataset.part;
+      if (!part) {
+        this._pendingRender = true;
+        return;
+      }
+      keep.add(part);
+    }
+    if (logBusy) {
+      keep.add("log");
+      clearTimeout(this._logTimer);
+      this._logTimer = setTimeout(() => {
+        if (this._pendingRender) this._backgroundRender();
+      }, 900);
+    }
+    if (!this._data || this._error) {
       this._pendingRender = true;
       return;
     }
@@ -1941,7 +1965,7 @@ class BabyTrackerCard extends HTMLElement {
     this._keepLogPosition(() => {
       const parts = this._renderData(this._data);
       parts.forEach(([name, html], index) => {
-        if (name === keep) return;
+        if (keep.has(name)) return;
         const old = [...card.children].filter((el) => el.dataset.part === name);
         const nodes = this._partNodes(name, html);
         if (old.length) {
@@ -1966,25 +1990,28 @@ class BabyTrackerCard extends HTMLElement {
    * at its top where it was, also when new entries arrived above it.
    */
   _keepLogPosition(change) {
-    const list = this._card?.querySelector("ul.log-scroll");
-    let anchor = null;
-    if (list && list.scrollTop > 0) {
-      const top = list.getBoundingClientRect().top;
-      const first = [...list.querySelectorAll(":scope > li[data-id]")].find((li) => li.getBoundingClientRect().bottom > top);
-      if (first) anchor = { id: first.dataset.id, offset: first.getBoundingClientRect().top - top, scrollTop: list.scrollTop };
-    }
+    const anchor = this._logReadingPosition();
     change();
     this._sizeLog(anchor);
+  }
+
+  /** The entry at the top of the scrolled log and how far it is from the top, or null. */
+  _logReadingPosition() {
+    const list = this._card?.querySelector("ul.log-scroll");
+    if (!list || list.scrollTop <= 0) return null;
+    const top = list.getBoundingClientRect().top;
+    const first = [...list.querySelectorAll(":scope > li[data-id]")].find((li) => li.getBoundingClientRect().bottom > top);
+    return first ? { id: first.dataset.id, offset: first.getBoundingClientRect().top - top, scrollTop: list.scrollTop } : null;
   }
 
   /**
    * Make the log as tall as its first `log_visible` entries (day headings included), so
    * the rest are scrolled to. Measured, because long entries wrap on narrow screens.
    */
-  _sizeLog(anchor = null) {
+  _sizeLog(anchor = null, again = false) {
     const list = this._card?.querySelector("ul.log-scroll");
     if (!list) return;
-    const visible = clampInt(this._config.log_visible, 1, 100, 6);
+    const visible = positiveInt(this._config.log_visible, 100, 6);
     const entries = list.querySelectorAll(":scope > li:not(.day)");
     let maxHeight = "";
     if (entries.length > visible) {
@@ -2005,10 +2032,25 @@ class BabyTrackerCard extends HTMLElement {
         ? list.scrollTop + same.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.offset
         : anchor.scrollTop;
     }
+    this._logAnchor = anchor;
+    const restored = list.scrollTop;
     // A fade at the bottom shows there is more (phones hide the scrollbar), until the end.
     const atEnd = () => list.classList.toggle("at-end", list.scrollTop + list.clientHeight >= list.scrollHeight - 2);
-    list.onscroll = atEnd;
+    list.onscroll = () => {
+      atEnd();
+      // Our own restore isn't someone scrolling.
+      if (Math.abs(list.scrollTop - restored) >= 1 || Date.now() - lastUserScroll < 1500) {
+        this._logScrolledAt = Date.now();
+        this._logAnchor = this._logReadingPosition();
+      }
+    };
     atEnd();
+    // Home Assistant's icons draw a moment later and can make rows taller: measure again.
+    if (!again && typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        if (this._card?.contains(list)) this._sizeLog(this._logReadingPosition() ?? anchor, true);
+      });
+    }
   }
 
   _render() {
@@ -2584,7 +2626,7 @@ class BabyTrackerCard extends HTMLElement {
   _logHtml(d, now) {
     const entries = [...(d.events || [])]
       .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
-      .slice(0, Number(this._config.log_entries) >= 1 ? Math.min(Math.round(Number(this._config.log_entries)), 500) : 20);
+      .slice(0, positiveInt(this._config.log_entries, 100, 20));
     let lastDay = "";
     const rows = entries
       .map((e) => {
@@ -2762,10 +2804,10 @@ const STYLE = `
   .suggestion ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: none; }
   .suggestion.done ha-icon { color: var(--success-color, #43a047); }
   .log { list-style: none; margin: 0; padding: 0; }
-  .log.scrolls { overflow-y: auto; border-bottom: 1px solid var(--divider-color); }
+  .log.scrolls { overflow-y: auto; }
+  .log button.icon { width: 26px; height: 26px; align-items: center; justify-content: center; }
   .log.scrolls:not(.at-end) { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); }
-  .log.scrolls li:last-child { border-bottom: none; }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .log li.day { border: none; padding-top: 10px; font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; }
   .log .text { flex: 1; }
