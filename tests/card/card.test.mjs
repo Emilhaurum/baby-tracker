@@ -346,6 +346,132 @@ test("the language option overrides Home Assistant's", async () => {
   await other.context.close();
 });
 
+/** A snapshot with `n` diapers, one every 30 minutes going back from 14:30. */
+function manyEntries(n) {
+  const events = Array.from({ length: n }, (_, i) => {
+    const at = new Date(new Date(iso("14:30")).getTime() - i * 30 * 60000).toISOString();
+    return { id: `d${i}`, kind: "diaper", start: at, end: null, diaper_type: i % 2 ? "dirty" : "wet" };
+  });
+  return snapshot({ events });
+}
+
+test("the log shows log_visible entries and scrolls to the rest", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["log"] }, snap: manyEntries(30) });
+  const list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  // 20 entries by default, 6 of them visible (with the day headings between them).
+  assert.equal(await list.locator("li:not(.day)").count(), 20);
+  const sizes = () =>
+    list.evaluate((ul) => {
+      const top = ul.getBoundingClientRect().top;
+      const entries = [...ul.querySelectorAll(":scope > li:not(.day)")];
+      return {
+        client: ul.clientHeight,
+        scroll: ul.scrollHeight,
+        sixth: Math.ceil(entries[5].getBoundingClientRect().bottom - top),
+        overflow: getComputedStyle(ul).overflowY,
+      };
+    });
+  let size = await sizes();
+  assert.ok(Math.abs(size.client - size.sixth) <= 2, JSON.stringify(size));
+  assert.ok(size.scroll > size.client + 100, JSON.stringify(size));
+  assert.equal(size.overflow, "auto");
+  // Faded at the bottom until scrolled to the end.
+  assert.equal(await list.evaluate((ul) => ul.classList.contains("at-end")), false);
+  await shot(page, "log-scroll");
+  await list.evaluate((ul) => {
+    ul.scrollTop = ul.scrollHeight;
+    ul.dispatchEvent(new Event("scroll"));
+  });
+  assert.equal(await list.evaluate((ul) => ul.classList.contains("at-end")), true);
+
+  // Scrolled down, the list stays there when the card is updated.
+  await list.evaluate((ul) => (ul.scrollTop = 200));
+  // Wait for the rebuilt list (not a fixed time) and past the "someone is scrolling" pause.
+  await page.waitForTimeout(900);
+  await page.evaluate(() => (window.oldList = document.querySelector("baby-logger-card").shadowRoot.querySelector("ul.log-scroll")));
+  await page.evaluate((snap) => window.hass.push(snap), manyEntries(30));
+  await page.waitForFunction(() => document.querySelector("baby-logger-card").shadowRoot.querySelector("ul.log-scroll") !== window.oldList);
+  assert.equal(await list.evaluate((ul) => ul.scrollTop), 200);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("a scrolled log keeps its size and the entry you're reading", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["header", "undo", "log"] }, snap: manyEntries(30) });
+  const list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  const height = await list.evaluate((ul) => ul.clientHeight);
+  // Scroll so "d5" is the first entry shown.
+  await list.evaluate((ul) => {
+    const li = ul.querySelector('li[data-id="d5"]');
+    ul.scrollTop += li.getBoundingClientRect().top - ul.getBoundingClientRect().top;
+  });
+  const firstShown = () =>
+    list.evaluate((ul) => {
+      const top = ul.getBoundingClientRect().top;
+      const li = [...ul.querySelectorAll("li[data-id]")].find((x) => x.getBoundingClientRect().bottom > top + 1);
+      return { id: li.dataset.id, offset: Math.round(li.getBoundingClientRect().top - top) };
+    });
+  const before = await firstShown();
+  await page.waitForTimeout(900); // done scrolling
+  // The card gets taller above the log (undo banner) and a new entry arrives at the top.
+  const snap = manyEntries(30);
+  snap.events.unshift({ id: "new", kind: "diaper", start: iso("14:55"), end: null, diaper_type: "both" });
+  snap.undo = { action: "diaper", expires: iso("15:00:25") };
+  await page.evaluate((s) => window.hass.push(s), snap);
+  await page.waitForFunction(() => document.querySelector("baby-logger-card").shadowRoot.querySelector('li[data-id="new"]'));
+  await page.waitForTimeout(50);
+  assert.equal(await list.evaluate((ul) => ul.clientHeight), height);
+  assert.deepEqual(await firstShown(), before);
+  // The card's width changes: still the same entries shown.
+  await page.evaluate(() => document.documentElement.style.setProperty("--width", "360px"));
+  await page.waitForTimeout(100);
+  assert.equal((await firstShown()).id, before.id);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("the log isn't rebuilt while it is being scrolled", async () => {
+  const { page, context } = await mount({ config: { parts: ["header", "log"] }, snap: manyEntries(30) });
+  await page.evaluate(() => {
+    const ul = document.querySelector("baby-logger-card").shadowRoot.querySelector("ul.log-scroll");
+    window.oldList = ul;
+    ul.scrollTop = 120;
+  });
+  await page.waitForTimeout(50);
+  const snap = manyEntries(30);
+  snap.today = { ...snap.today, diapers: { ...snap.today.diapers, total: 7 } };
+  await page.evaluate((s) => window.hass.push(s), snap);
+  await page.waitForTimeout(50);
+  // The rest of the card is updated, the log isn't (yet).
+  assert.equal(await page.evaluate(() => document.querySelector("baby-logger-card").shadowRoot.querySelector(".chip").textContent), "7 diapers");
+  assert.equal(await page.evaluate(() => document.querySelector("baby-logger-card").shadowRoot.querySelector("ul.log-scroll") === window.oldList), true);
+  // Once the scrolling has stopped it is, at the same place.
+  await page.waitForFunction(() => document.querySelector("baby-logger-card").shadowRoot.querySelector("ul.log-scroll") !== window.oldList, null, { timeout: 3000 });
+  assert.equal(await page.evaluate(() => document.querySelector("baby-logger-card").shadowRoot.querySelector("ul.log-scroll").scrollTop), 120);
+  await context.close();
+});
+
+test("log_visible and log_entries can be changed; short logs don't scroll", async () => {
+  let { page, context } = await mount({ config: { parts: ["log"], log_visible: 3, log_entries: 8 }, snap: manyEntries(30) });
+  let list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  assert.equal(await list.locator("li:not(.day)").count(), 8);
+  const third = await list.evaluate((ul) => Math.ceil(ul.querySelectorAll(":scope > li:not(.day)")[2].getBoundingClientRect().bottom - ul.getBoundingClientRect().top));
+  assert.ok(Math.abs((await list.evaluate((ul) => ul.clientHeight)) - third) <= 2);
+  await context.close();
+  // 0 (or nonsense) means the default, for both options.
+  ({ page, context } = await mount({ config: { parts: ["log"], log_entries: 0, log_visible: 0 }, snap: manyEntries(30) }));
+  list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  assert.equal(await list.locator("li:not(.day)").count(), 20);
+  const sixth = await list.evaluate((ul) => Math.ceil(ul.querySelectorAll(":scope > li:not(.day)")[5].getBoundingClientRect().bottom - ul.getBoundingClientRect().top));
+  assert.ok(Math.abs((await list.evaluate((ul) => ul.clientHeight)) - sixth) <= 2);
+  await context.close();
+  ({ page, context } = await mount({ config: { parts: ["log"] }, snap: manyEntries(4) }));
+  list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  assert.equal(await list.evaluate((ul) => ul.classList.contains("scrolls")), false);
+  assert.equal(await list.evaluate((ul) => ul.style.maxHeight), "");
+  await context.close();
+});
+
 test("tapping the sleep timeline shows a period and its length", async () => {
   const { page, context, errors } = await mount({ config: { parts: ["timeline"] } });
   const card = page.locator("baby-logger-card");

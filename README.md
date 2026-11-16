@@ -109,7 +109,8 @@ type: custom:baby-logger-card
 | `timeline_group` | `1` | Days per timeline line: `1` shows every day, a larger number (e.g. `7`) averages that many days per line. |
 | `timeline_start_hour` | `0` | Hour each timeline line starts at. Use e.g. `18` to keep each night on one line. |
 | `show_log` | `true` | Show the latest entries, each with a delete button. |
-| `log_entries` | `10` | Number of entries in the log. |
+| `log_entries` | `20` | Number of entries in the log; scroll in the log to see them all. |
+| `log_visible` | `6` | Entries shown before the log scrolls. |
 | `days` | `7` | Days shown in the charts (1–31). |
 
 Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to delete it.
