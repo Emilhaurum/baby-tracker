@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Card: tap a line of the sleep timeline to see the sleep or awake period there, with
+  its start, end and length; the period is outlined on the line. A sleep across midnight
+  is shown whole. On lines averaging several days it shows on how many of them the baby
+  was asleep at that time.
 - Card: the log shows 6 entries and scrolls to the rest, up to 20 (new option
   `log_visible`; `log_entries` now defaults to 20). A fade at the bottom shows there is
   more, and the log keeps its scroll position when the card updates.

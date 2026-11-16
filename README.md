@@ -32,7 +32,9 @@ Everything is stored locally in Home Assistant.
 - **Sleep timeline**: a waterfall chart with one line per day showing when the baby
   slept and was awake. Show as many days as you like, and either every day or an
   average over several days per line (e.g. weekly), which shades each time of day by
-  how often the baby is asleep then.
+  how often the baby is asleep then. Tap a line to see the sleep or awake period there,
+  with its start, end and length (on an averaged line: on how many days the baby was
+  asleep at that time).
 - **Night sleep chart**: hours asleep and awake within the night for each night, with
   the average and wake-ups per night. The night window is the integration's *Night
   starts* / *Night ends* setting, or one you set on the card.
@@ -126,7 +128,7 @@ Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to dele
 | `summary` | Last night and daytime sleep. |
 | `trends` | The 7-day diaper, feeding and sleep charts. |
 | `nights` | The night sleep chart. |
-| `timeline` | The sleep timeline. |
+| `timeline` | The sleep timeline. Tap a line to see the length of a sleep or awake period. |
 | `log` | The latest entries. |
 | `growth` | Weight and length charts, the latest measurements and a form to add one. |
 | `milestones` | The milestone timeline, with a window to add milestones. |

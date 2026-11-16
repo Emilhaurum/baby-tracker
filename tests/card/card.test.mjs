@@ -472,6 +472,64 @@ test("log_visible and log_entries can be changed; short logs don't scroll", asyn
   await context.close();
 });
 
+test("tapping the sleep timeline shows a period and its length", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["timeline"] } });
+  const card = page.locator("baby-logger-card");
+  const today = card.locator(".tl-row:not(.tl-axis)").first();
+  // Tap today's line at 03:00 (the night's sleep, 21:30-06:30) and at 09:00 (awake).
+  const tapAt = async (row, hours) => {
+    const box = await row.locator(".tl-bar").boundingBox();
+    await page.mouse.click(box.x + (box.width * hours) / 24, box.y + box.height / 2);
+  };
+  await tapAt(today, 3);
+  const detail = card.locator(".tl-detail");
+  assert.equal(await detail.count(), 1);
+  assert.match(await detail.textContent(), /Asleep .*9h 00m/);
+  assert.ok(await detail.evaluate((d) => d.classList.contains("sleep")));
+  assert.equal(await card.locator(".tl-seg").count(), 1);
+  await shot(page, "timeline-pick");
+  // It stays across updates.
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(30);
+  assert.equal(await card.locator(".tl-detail").count(), 1);
+  // Another place shows the awake period instead.
+  await tapAt(today, 9);
+  assert.match(await card.locator(".tl-detail").textContent(), /Awake .*5h 50m/);
+  // Tapping the same period elsewhere closes it ...
+  await tapAt(today, 12.1);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // ... but a nap right next to the period shown (12:20-13:50) is shown, not a close.
+  await tapAt(today, 12.1);
+  assert.match(await card.locator(".tl-detail").textContent(), /Awake /);
+  await tapAt(today, 12.45);
+  assert.match(await card.locator(".tl-detail").textContent(), /Asleep .*1h 30m/);
+  // The same period again, or the close button, closes it.
+  await tapAt(today, 13);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  await tapAt(today, 9);
+  await card.locator('[data-action="timeline-close"]').click();
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // Later today hasn't happened: nothing to show, now or later.
+  await tapAt(today, 20);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  await page.clock.fastForward("06:00:00");
+  await page.evaluate((snap) => window.hass.push(snap), snapshot());
+  await page.waitForTimeout(30);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // Taps on the date or the hours aren't taps on the line.
+  await today.locator(".tl-label").click();
+  await today.locator(".tl-value").click();
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // Switching to another baby closes it.
+  await tapAt(today, 3);
+  assert.equal(await card.locator(".tl-detail").count(), 1);
+  await page.evaluate(() => document.querySelector("baby-logger-card").setConfig({ parts: ["timeline"], entry_id: "e1" }));
+  await card.locator(".tl-row:not(.tl-axis)").first().waitFor();
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("dark theme", async () => {
   const { page, context } = await mount({ config: { parts: ["header", "buttons", "summary"] }, dark: true });
   const bg = await page.locator("baby-logger-card .qb").first().evaluate((e) => getComputedStyle(e).backgroundColor);

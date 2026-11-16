@@ -207,6 +207,14 @@ export const I18N = {
     "tl.day": "{label}: {value} asleep",
     "tl.avg": "{label}: {value} asleep per day on average",
     "tl.darker": "Darker = asleep on more of the {n} days",
+    "tl.pick_sleep": "Asleep {from}–{to} · {duration}",
+    "tl.pick_sleep_now": "Asleep since {from} · {duration} so far",
+    "tl.pick_awake": "Awake {from}–{to} · {duration}",
+    "tl.pick_awake_now": "Awake since {from} · {duration} so far",
+    "tl.pick_awake_until": "Awake until {to}",
+    "tl.pick_awake_unknown": "Awake: no sleep logged around this time",
+    "tl.pick_group": "{time}: asleep on {n} of {days}",
+    "tl.close": "Close",
     "nights.title": "Night sleep",
     "nights.tip_asleep": "{h} asleep",
     "nights.tip_awake": "{h} awake",
@@ -395,6 +403,14 @@ export const I18N = {
     "tl.day": "{label}: {value} søvn",
     "tl.avg": "{label}: {value} søvn pr. dag i gennemsnit",
     "tl.darker": "Mørkere = sov på flere af de {n} dage",
+    "tl.pick_sleep": "Sov {from}–{to} · {duration}",
+    "tl.pick_sleep_now": "Sover siden {from} · {duration} indtil nu",
+    "tl.pick_awake": "Vågen {from}–{to} · {duration}",
+    "tl.pick_awake_now": "Vågen siden {from} · {duration} indtil nu",
+    "tl.pick_awake_until": "Vågen indtil {to}",
+    "tl.pick_awake_unknown": "Vågen: ingen søvn registreret omkring dette tidspunkt",
+    "tl.pick_group": "{time}: sov på {n} af {days}",
+    "tl.close": "Luk",
     "nights.title": "Nattesøvn",
     "nights.tip_asleep": "{h} søvn",
     "nights.tip_awake": "{h} vågen",
@@ -698,6 +714,9 @@ export function timelineRows(intervals, settings, now = new Date()) {
       // One day: hours asleep (so far). Several: average hours asleep per 24 h.
       hours: settings.group === 1 ? asleep / 3600000 : elapsed ? (asleep / elapsed) * 24 : null,
       elapsed: days.length === 1 ? days[0].elapsed / days[0].length : null,
+      // Each day's [start, end], oldest first, and the hour lines start at (for taps).
+      dayBounds: days.map((d) => [d.start, d.end]),
+      startHour: settings.startHour,
     };
     if (settings.group === 1) {
       const d = days[0];
@@ -766,7 +785,81 @@ function timelineLabel(row, now) {
   return new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short" }).formatRange(row.start, last);
 }
 
-function timelineHtml(rows, settings, now) {
+/**
+ * The sleep or awake period at a point of a one-day timeline line (`fraction` of the
+ * line, 0..1). `intervals` are all loaded sleeps, so a sleep across midnight is found
+ * whole. Returns { kind: "sleep" | "awake", from, to, ongoing } (from is null when the
+ * awake period started before the loaded sleeps), or null for a point in the future.
+ */
+export function timelineSegmentAt(intervals, row, fraction, now = new Date()) {
+  const at = new Date(+row.start + fraction * (row.end - row.start));
+  if (at > now) return null;
+  const sleep = intervals.find(([s, e]) => s <= at && at < e);
+  if (sleep) {
+    const ongoing = sleep[1] >= now;
+    return { kind: "sleep", from: sleep[0], to: ongoing ? now : sleep[1], ongoing };
+  }
+  let from = null;
+  let to = null;
+  for (const [s, e] of intervals) {
+    if (e <= at && (!from || e > from)) from = e;
+    if (s > at && (!to || s < to)) to = s;
+  }
+  return { kind: "awake", from, to: to ?? now, ongoing: !to };
+}
+
+/**
+ * For a line averaging several days: on how many of its days (that have reached that
+ * time) the baby was asleep at the clock time at `fraction` of the line.
+ */
+export function timelineSlotAt(intervals, row, fraction, now = new Date()) {
+  let asleep = 0;
+  let days = 0;
+  const offset = Math.round(fraction * 1440); // minutes after the line's start hour
+  for (const [start] of row.dayBounds) {
+    // The same clock time every day, also on a 23 or 25 hour day.
+    const at = new Date(start);
+    at.setMinutes(at.getMinutes() + offset);
+    if (at > now) continue;
+    days++;
+    if (intervals.some(([s, e]) => s <= at && at < e)) asleep++;
+  }
+  // The time on the axis, the same for every day of the line.
+  const minutes = ((row.startHour ?? 0) * 60 + offset) % 1440;
+  return { minutes, asleep, days };
+}
+
+/** A time, with the weekday when it isn't on the line's own (labelled) day. */
+function clockOn(date, lineStart) {
+  const time = clock(date);
+  if (startOfDay(date).getTime() === startOfDay(lineStart).getTime()) return time;
+  return `${date.toLocaleDateString(LOCALE, { weekday: "short" })} ${time}`;
+}
+
+/** The text and highlight for a tapped point of a timeline line. */
+export function timelinePick(intervals, row, fraction, now = new Date()) {
+  if (row.days > 1) {
+    const slot = timelineSlotAt(intervals, row, fraction, now);
+    if (!slot.days) return null;
+    const time = clock(new Date(2000, 0, 1, Math.floor(slot.minutes / 60), slot.minutes % 60));
+    return { text: t("tl.pick_group", { time, n: slot.asleep, days: tn(slot.days, "day") }) };
+  }
+  const seg = timelineSegmentAt(intervals, row, fraction, now);
+  if (!seg) return null;
+  const length = row.end - row.start;
+  const clip = (d) => Math.min(Math.max((d - row.start) / length, 0), row.elapsed ?? 1);
+  const highlight = [seg.from ? clip(seg.from) : 0, clip(seg.to)];
+  const duration = seg.from ? formatDuration(seg.to - seg.from) : "";
+  const prefix = seg.kind === "sleep" ? "tl.pick_sleep" : "tl.pick_awake";
+  const on = (d) => clockOn(d, row.start);
+  let text;
+  if (!seg.from) text = seg.ongoing ? t("tl.pick_awake_unknown") : t("tl.pick_awake_until", { to: on(seg.to) });
+  else if (seg.ongoing) text = t(`${prefix}_now`, { from: on(seg.from), duration });
+  else text = t(prefix, { from: on(seg.from), to: on(seg.to), duration });
+  return { kind: seg.kind, text, highlight };
+}
+
+function timelineHtml(rows, settings, now, pick = null) {
   const ticks = [0, 6, 12, 18, 24]
     .map((h) => {
       const hour = String((settings.startHour + h) % 24).padStart(2, "0");
@@ -778,8 +871,16 @@ function timelineHtml(rows, settings, now) {
       const label = timelineLabel(row, now);
       const value = hours(row.hours);
       const title = t(row.days === 1 ? "tl.day" : "tl.avg", { label, value });
-      return `<div class="tl-row" title="${esc(title)}"><span class="tl-label">${esc(label)}</span>
-        <span class="tl-bar" style="background:${timelineGradient(row)}"></span><span class="tl-value">${value}</span></div>`;
+      const picked = pick && pick.start === row.start.getTime() ? pick : null;
+      const marks = picked
+        ? `${picked.highlight ? `<span class="tl-seg" style="left:${pct(picked.highlight[0])};width:${pct(Math.max(0, picked.highlight[1] - picked.highlight[0]))}"></span>` : ""}<span class="tl-mark" style="left:${pct(picked.fraction)}"></span>`
+        : "";
+      const detail = picked
+        ? `<div class="tl-detail${picked.kind ? ` ${picked.kind}` : ""}"><span>${esc(picked.text)}</span>
+            <button class="tl-close" title="${esc(t("tl.close"))}" aria-label="${esc(t("tl.close"))}" data-action="timeline-close"><ha-icon icon="mdi:close"></ha-icon></button></div>`
+        : "";
+      return `<div class="tl-row${picked ? " picked" : ""}" title="${esc(title)}" data-action="timeline-pick" data-start="${row.start.getTime()}"><span class="tl-label">${esc(label)}</span>
+        <span class="tl-bar" style="background:${timelineGradient(row)}">${marks}</span><span class="tl-value">${value}</span></div>${detail}`;
     })
     .join("");
   const legendItems = [
@@ -1511,6 +1612,7 @@ class BabyTrackerCard extends HTMLElement {
     const changed =
       this._config &&
       (this._config.entry_id !== next.entry_id || this._config.days !== next.days || needs(this._config) !== needs(next));
+    if (this._config && JSON.stringify(timelineSettings(this._config)) !== JSON.stringify(timelineSettings(next))) this._tlPick = null;
     this._config = next;
     if (changed) this._resubscribe();
     // A card Home Assistant builds again (e.g. after reconnecting) shows the last data
@@ -1674,6 +1776,7 @@ class BabyTrackerCard extends HTMLElement {
   }
 
   _resubscribe() {
+    this._tlPick = null; // another baby (or data): the picked period no longer applies
     this._unsubscribe();
     this._data = null;
     this._sleeps = null;
@@ -1794,6 +1897,29 @@ class BabyTrackerCard extends HTMLElement {
         this._msOpen = new Set();
         this._milestoneForm = {};
         this._render();
+        break;
+      case "timeline-pick": {
+        const bar = target.querySelector(".tl-bar");
+        const rect = bar?.getBoundingClientRect();
+        // Only taps on the bar (a little either side is fine), not on the date or hours.
+        if (!rect || !rect.width || ev.clientX < rect.left - 6 || ev.clientX > rect.right + 6) break;
+        const fraction = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 0.9999);
+        const start = Number(target.dataset.start);
+        const row = this._tlShown?.rows.find((r) => r.start.getTime() === start);
+        const now = new Date();
+        const picked = row && timelinePick(this._tlShown.intervals, row, fraction, now);
+        // Nothing to show there (later today): leave it as it is.
+        if (!picked) break;
+        // Tapping the period that is shown again closes it; another period is shown instead.
+        const shown =
+          this._tlPick?.start === start && timelinePick(this._tlShown.intervals, row, this._tlPick.fraction, now);
+        this._tlPick = shown && shown.text === picked.text ? null : { start, fraction };
+        this._renderPart("timeline");
+        break;
+      }
+      case "timeline-close":
+        this._tlPick = null;
+        this._renderPart("timeline");
         break;
       case "milestones-more":
         this._msShowAll = !this._msShowAll;
@@ -1985,6 +2111,20 @@ class BabyTrackerCard extends HTMLElement {
     this._pendingRender = true;
   }
 
+  /** Rebuild one part of the card (e.g. after a tap that only changes that part). */
+  _renderPart(name) {
+    const old = this._card ? [...this._card.children].filter((el) => el.dataset.part === name) : [];
+    const html = this._data && !this._error && old.length ? this._renderData(this._data).find(([n]) => n === name)?.[1] : undefined;
+    if (html === undefined) {
+      this._render();
+      return;
+    }
+    this._applyLanguage();
+    noteScrollAnchor();
+    old[0].before(this._partNodes(name, html));
+    old.forEach((el) => el.remove());
+  }
+
   /**
    * Run `change` (which may rebuild the log), then size the log again and keep the entry
    * at its top where it was, also when new entries arrived above it.
@@ -2146,7 +2286,19 @@ class BabyTrackerCard extends HTMLElement {
       },
       timeline: () => {
         const settings = timelineSettings(cfg);
-        const content = intervals ? timelineHtml(timelineRows(intervals, settings, now), settings, now) : pending;
+        let content = pending;
+        if (intervals) {
+          const rows = timelineRows(intervals, settings, now);
+          this._tlShown = { rows, intervals };
+          // The tapped point, kept by the line's date so it survives the minute updates.
+          let pick = null;
+          const row = this._tlPick && rows.find((r) => r.start.getTime() === this._tlPick.start);
+          if (row) {
+            const detail = timelinePick(intervals, row, this._tlPick.fraction, now);
+            if (detail) pick = { ...detail, start: this._tlPick.start, fraction: this._tlPick.fraction };
+          }
+          content = timelineHtml(rows, settings, now, pick);
+        }
         const title = esc(settings.group === 1 ? t("tl.title") : t("tl.title_avg", { n: settings.group }));
         return `
         <div class="section">
@@ -2727,7 +2879,17 @@ const STYLE = `
   .timeline.grouped .tl-row { grid-template-columns: 7.5em 1fr 3.4em; }
   .tl-label { color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tl-value { text-align: right; font-variant-numeric: tabular-nums; }
-  .tl-bar { height: 12px; border-radius: 3px; background-color: var(--divider-color); }
+  .tl-bar { position: relative; height: 12px; border-radius: 3px; background-color: var(--divider-color); }
+  .tl-row[data-action] .tl-bar { cursor: pointer; }
+  button.tl-close { display: inline-flex; padding: 4px; border-radius: 50%; background: none; border: none;
+    color: var(--secondary-text-color); cursor: pointer; }
+  button.tl-close:hover { background: var(--card-background-color); color: var(--primary-text-color); }
+  .tl-seg { position: absolute; top: -2px; bottom: -2px; border: 2px solid var(--primary-text-color); border-radius: 4px; box-sizing: border-box; }
+  .tl-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--primary-text-color); }
+  .tl-detail { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px; padding: 4px 4px 4px 10px; border-radius: 8px;
+    background: var(--secondary-background-color); font-size: 0.85em; border-left: 4px solid var(--bt-awake); }
+  .tl-detail.sleep { border-left-color: var(--bt-sleep); }
+  .tl-detail span { flex: 1; }
   .tl-ticks { position: relative; height: 1.2em; color: var(--secondary-text-color); }
   .tl-ticks span { position: absolute; transform: translateX(-50%); }
   .tl-ticks span:first-child { transform: none; }
