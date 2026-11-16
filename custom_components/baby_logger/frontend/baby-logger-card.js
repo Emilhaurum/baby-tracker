@@ -33,7 +33,7 @@
  *   language: auto            auto (the Home Assistant user's language), en or da
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.4.0";
 const DOMAIN = "baby_logger";
 
 const DIAPER = {
