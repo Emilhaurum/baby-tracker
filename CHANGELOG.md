@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1
 
 - Card: the scrolling log and the timeline taps from 1.4.0 are now opt-in, so cards
   without the new options look and work as before 1.4.0. Set `log_visible` (e.g. `6`)
