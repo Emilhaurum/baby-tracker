@@ -1881,7 +1881,11 @@ class BabyTrackerCard extends HTMLElement {
         // would loop), and with the page kept still like any other change.
         requestAnimationFrame(() => {
           this._setWidthClasses(width, true);
-          this._sizeLog(this._logScrollTop());
+          // Entries wrap differently at another width; height changes don't matter here.
+          if (width !== this._logWidth) {
+            this._logWidth = width;
+            this._keepLogPosition(() => {});
+          }
         });
       }).observe(card);
     }
@@ -1934,53 +1938,73 @@ class BabyTrackerCard extends HTMLElement {
     }
     const card = this._card;
     noteScrollAnchor();
-    const logScroll = this._logScrollTop();
-    const parts = this._renderData(this._data);
-    parts.forEach(([name, html], index) => {
-      if (name === keep) return;
-      const old = [...card.children].filter((el) => el.dataset.part === name);
-      const nodes = this._partNodes(name, html);
-      if (old.length) {
-        old[0].before(nodes);
-        old.forEach((el) => el.remove());
-        return;
-      }
-      // The part had nothing to show before: insert it before the next part shown.
-      const later = new Set(parts.slice(index + 1).map(([n]) => n));
-      const anchor = [...card.children].find((el) => later.has(el.dataset.part));
-      if (anchor) anchor.before(nodes);
-      else card.append(nodes);
+    this._keepLogPosition(() => {
+      const parts = this._renderData(this._data);
+      parts.forEach(([name, html], index) => {
+        if (name === keep) return;
+        const old = [...card.children].filter((el) => el.dataset.part === name);
+        const nodes = this._partNodes(name, html);
+        if (old.length) {
+          old[0].before(nodes);
+          old.forEach((el) => el.remove());
+          return;
+        }
+        // The part had nothing to show before: insert it before the next part shown.
+        const later = new Set(parts.slice(index + 1).map(([n]) => n));
+        const anchor = [...card.children].find((el) => later.has(el.dataset.part));
+        if (anchor) anchor.before(nodes);
+        else card.append(nodes);
+      });
     });
-    this._sizeLog(logScroll);
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount && amount !== active) amount.value = this._bottleAmount;
     this._pendingRender = true;
   }
 
-  /** How far the log is scrolled, to keep it there when the card is rebuilt. */
-  _logScrollTop() {
-    return this._card?.querySelector("ul.log-scroll")?.scrollTop || 0;
+  /**
+   * Run `change` (which may rebuild the log), then size the log again and keep the entry
+   * at its top where it was, also when new entries arrived above it.
+   */
+  _keepLogPosition(change) {
+    const list = this._card?.querySelector("ul.log-scroll");
+    let anchor = null;
+    if (list && list.scrollTop > 0) {
+      const top = list.getBoundingClientRect().top;
+      const first = [...list.querySelectorAll(":scope > li[data-id]")].find((li) => li.getBoundingClientRect().bottom > top);
+      if (first) anchor = { id: first.dataset.id, offset: first.getBoundingClientRect().top - top, scrollTop: list.scrollTop };
+    }
+    change();
+    this._sizeLog(anchor);
   }
 
   /**
    * Make the log as tall as its first `log_visible` entries (day headings included), so
    * the rest are scrolled to. Measured, because long entries wrap on narrow screens.
    */
-  _sizeLog(scrollTop = 0) {
+  _sizeLog(anchor = null) {
     const list = this._card?.querySelector("ul.log-scroll");
     if (!list) return;
     const visible = clampInt(this._config.log_visible, 1, 100, 6);
     const entries = list.querySelectorAll(":scope > li:not(.day)");
-    if (entries.length <= visible) {
-      list.classList.remove("scrolls");
-      list.style.maxHeight = "";
-      return;
+    let maxHeight = "";
+    if (entries.length > visible) {
+      // Measured from the top of the list's content (whatever it is scrolled to).
+      const height = entries[visible - 1].getBoundingClientRect().bottom - list.getBoundingClientRect().top + list.scrollTop;
+      // Not laid out yet (e.g. in a hidden view): an estimate, measured again on resize.
+      maxHeight = height > 0 ? `${Math.ceil(height)}px` : `${visible * 2.3}em`;
     }
-    const height = entries[visible - 1].getBoundingClientRect().bottom - list.getBoundingClientRect().top;
-    if (!(height > 0)) return; // not laid out yet: sized again on the next render or resize
-    list.classList.add("scrolls");
-    list.style.maxHeight = `${Math.ceil(height)}px`;
-    list.scrollTop = scrollTop;
+    if (list.style.maxHeight !== maxHeight) {
+      noteScrollAnchor(); // the card's height changes: keep the page still
+      list.style.maxHeight = maxHeight;
+    }
+    list.classList.toggle("scrolls", Boolean(maxHeight));
+    if (!maxHeight) return;
+    if (anchor) {
+      const same = list.querySelector(`:scope > li[data-id="${CSS.escape(anchor.id)}"]`);
+      list.scrollTop = same
+        ? list.scrollTop + same.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.offset
+        : anchor.scrollTop;
+    }
     // A fade at the bottom shows there is more (phones hide the scrollbar), until the end.
     const atEnd = () => list.classList.toggle("at-end", list.scrollTop + list.clientHeight >= list.scrollHeight - 2);
     list.onscroll = atEnd;
@@ -2004,15 +2028,15 @@ class BabyTrackerCard extends HTMLElement {
       // not every input type has a selection
     }
     noteScrollAnchor();
-    const logScroll = this._logScrollTop();
-    if (this._error) {
-      card.innerHTML = `<div class="message error">${esc(this._error.key ? t(this._error.key) : this._error)}</div>`;
-    } else if (!this._data) {
-      card.innerHTML = `<div class="message">${esc(t("loading"))}</div>`;
-    } else {
-      card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
-    }
-    this._sizeLog(logScroll);
+    this._keepLogPosition(() => {
+      if (this._error) {
+        card.innerHTML = `<div class="message error">${esc(this._error.key ? t(this._error.key) : this._error)}</div>`;
+      } else if (!this._data) {
+        card.innerHTML = `<div class="message">${esc(t("loading"))}</div>`;
+      } else {
+        card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
+      }
+    });
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount) amount.value = this._bottleAmount;
     const focused = focusId ? this.shadowRoot.getElementById(focusId) : null;
@@ -2560,7 +2584,7 @@ class BabyTrackerCard extends HTMLElement {
   _logHtml(d, now) {
     const entries = [...(d.events || [])]
       .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
-      .slice(0, clampInt(this._config.log_entries, 1, 100, 20));
+      .slice(0, Number(this._config.log_entries) >= 1 ? Math.min(Math.round(Number(this._config.log_entries)), 500) : 20);
     let lastDay = "";
     const rows = entries
       .map((e) => {
@@ -2569,7 +2593,7 @@ class BabyTrackerCard extends HTMLElement {
         const heading = day !== lastDay ? `<li class="day">${esc(day)}</li>` : "";
         lastDay = day;
         const { emoji, text } = describe(e);
-        return `${heading}<li><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
+        return `${heading}<li data-id="${esc(e.id)}"><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
             <button class="icon" title="${esc(t("delete"))}" aria-label="${esc(t("delete"))}" data-action="delete" data-value="${esc(e.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
       })
       .join("");

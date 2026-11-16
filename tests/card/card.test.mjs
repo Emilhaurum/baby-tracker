@@ -393,12 +393,49 @@ test("the log shows log_visible entries and scrolls to the rest", async () => {
   await context.close();
 });
 
+test("a scrolled log keeps its size and the entry you're reading", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["header", "undo", "log"] }, snap: manyEntries(30) });
+  const list = page.locator("baby-logger-card").locator("ul.log-scroll");
+  const height = await list.evaluate((ul) => ul.clientHeight);
+  // Scroll so "d5" is the first entry shown.
+  await list.evaluate((ul) => {
+    const li = ul.querySelector('li[data-id="d5"]');
+    ul.scrollTop += li.getBoundingClientRect().top - ul.getBoundingClientRect().top;
+  });
+  const firstShown = () =>
+    list.evaluate((ul) => {
+      const top = ul.getBoundingClientRect().top;
+      const li = [...ul.querySelectorAll("li[data-id]")].find((x) => x.getBoundingClientRect().bottom > top + 1);
+      return { id: li.dataset.id, offset: Math.round(li.getBoundingClientRect().top - top) };
+    });
+  const before = await firstShown();
+  // The card gets taller above the log (undo banner) and a new entry arrives at the top.
+  const snap = manyEntries(30);
+  snap.events.unshift({ id: "new", kind: "diaper", start: iso("14:55"), end: null, diaper_type: "both" });
+  snap.undo = { action: "diaper", expires: iso("15:00:25") };
+  await page.evaluate((s) => window.hass.push(s), snap);
+  await page.waitForFunction(() => document.querySelector("baby-logger-card").shadowRoot.querySelector(".undo"));
+  await page.waitForTimeout(50);
+  assert.equal(await list.evaluate((ul) => ul.clientHeight), height);
+  assert.deepEqual(await firstShown(), before);
+  // The card's width changes: still the same entries shown.
+  await page.evaluate(() => document.documentElement.style.setProperty("--width", "360px"));
+  await page.waitForTimeout(100);
+  assert.equal((await firstShown()).id, before.id);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("log_visible and log_entries can be changed; short logs don't scroll", async () => {
   let { page, context } = await mount({ config: { parts: ["log"], log_visible: 3, log_entries: 8 }, snap: manyEntries(30) });
   let list = page.locator("baby-logger-card").locator("ul.log-scroll");
   assert.equal(await list.locator("li:not(.day)").count(), 8);
   const third = await list.evaluate((ul) => Math.ceil(ul.querySelectorAll(":scope > li:not(.day)")[2].getBoundingClientRect().bottom - ul.getBoundingClientRect().top));
   assert.ok(Math.abs((await list.evaluate((ul) => ul.clientHeight)) - third) <= 2);
+  await context.close();
+  // 0 (or nonsense) means the default.
+  ({ page, context } = await mount({ config: { parts: ["log"], log_entries: 0 }, snap: manyEntries(30) }));
+  assert.equal(await page.locator("baby-logger-card").locator("ul.log-scroll li:not(.day)").count(), 20);
   await context.close();
   ({ page, context } = await mount({ config: { parts: ["log"] }, snap: manyEntries(4) }));
   list = page.locator("baby-logger-card").locator("ul.log-scroll");
