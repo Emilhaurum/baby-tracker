@@ -7,7 +7,8 @@
  *   show_summary: true
  *   show_trends: true
  *   show_log: true
- *   log_entries: 10
+ *   log_entries: 20           entries in the log (scroll to see them all)
+ *   log_visible: 6            entries shown before the log scrolls
  *   days: 7
  *   show_timeline: true
  *   timeline_days: 14         days shown in the sleep timeline
@@ -62,7 +63,8 @@ const DEFAULTS = {
   show_trends: true,
   show_timeline: true,
   show_log: true,
-  log_entries: 10,
+  log_entries: 20,
+  log_visible: 6,
   days: 7,
   timeline_days: 14,
   timeline_group: 1,
@@ -308,7 +310,8 @@ export const I18N = {
     "ed.night_from": "Night from",
     "ed.to": "to",
     "ed.night_hint": "Leave the night times empty to use the integration's Night starts / Night ends settings.",
-    "ed.log_entries": "Log entries",
+    "ed.log_entries": "Log entries in total (scroll to see them)",
+    "ed.log_visible": "Log entries shown before scrolling",
     "ed.units": "Growth units",
     "ed.metric": "Metric (kg, cm)",
     "ed.imperial": "Imperial (lb + oz, in)",
@@ -495,7 +498,8 @@ export const I18N = {
     "ed.night_from": "Nat fra",
     "ed.to": "til",
     "ed.night_hint": "Lad nattetiderne være tomme for at bruge integrationens indstillinger for Natten starter / Natten slutter.",
-    "ed.log_entries": "Linjer i loggen",
+    "ed.log_entries": "Linjer i loggen i alt (rul for at se dem)",
+    "ed.log_visible": "Linjer vist i loggen, før den ruller",
     "ed.units": "Enheder for vækst",
     "ed.metric": "Metrisk (kg, cm)",
     "ed.imperial": "Imperial (lb + oz, in)",
@@ -612,6 +616,12 @@ export function dailyTrends(events, days, now = new Date(), sleepStart = null) {
   }
   return buckets;
 }
+
+/** A whole number from 1 to `max`; anything else (0, empty, nonsense) gives `fallback`. */
+const positiveInt = (value, max, fallback) => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, max) : fallback;
+};
 
 const clampInt = (value, min, max, fallback) => {
   const n = Math.round(Number(value));
@@ -1875,7 +1885,15 @@ class BabyTrackerCard extends HTMLElement {
         const width = entries[0].contentRect.width;
         // Changing the layout changes the card's height: not inside the observer (that
         // would loop), and with the page kept still like any other change.
-        requestAnimationFrame(() => this._setWidthClasses(width, true));
+        requestAnimationFrame(() => {
+          this._setWidthClasses(width, true);
+          // Entries wrap differently at another width; height changes don't matter here.
+          if (width !== this._logWidth) {
+            this._logWidth = width;
+            // Entries have already re-wrapped: use the position saved while scrolling.
+            this._sizeLog(this._logAnchor);
+          }
+        });
       }).observe(card);
     }
     this._card = card;
@@ -1916,36 +1934,123 @@ class BabyTrackerCard extends HTMLElement {
   _backgroundRender() {
     this._applyLanguage();
     const active = this._fieldFocused() ? this.shadowRoot.activeElement : null;
-    if (!active) {
+    // Someone is scrolling the log: rebuilding it would stop the scroll mid-flick.
+    const logBusy = Date.now() - (this._logScrolledAt || 0) < 800 && Boolean(this._card?.querySelector("ul.log-scroll"));
+    if (!active && !logBusy) {
       this._render();
       return;
     }
-    const keep = active.closest("[data-part]")?.dataset.part;
-    if (!keep || !this._data || this._error) {
+    const keep = new Set();
+    if (active) {
+      const part = active.closest("[data-part]")?.dataset.part;
+      if (!part) {
+        this._pendingRender = true;
+        return;
+      }
+      keep.add(part);
+    }
+    if (logBusy) {
+      keep.add("log");
+      clearTimeout(this._logTimer);
+      this._logTimer = setTimeout(() => {
+        if (this._pendingRender) this._backgroundRender();
+      }, 900);
+    }
+    if (!this._data || this._error) {
       this._pendingRender = true;
       return;
     }
     const card = this._card;
     noteScrollAnchor();
-    const parts = this._renderData(this._data);
-    parts.forEach(([name, html], index) => {
-      if (name === keep) return;
-      const old = [...card.children].filter((el) => el.dataset.part === name);
-      const nodes = this._partNodes(name, html);
-      if (old.length) {
-        old[0].before(nodes);
-        old.forEach((el) => el.remove());
-        return;
-      }
-      // The part had nothing to show before: insert it before the next part shown.
-      const later = new Set(parts.slice(index + 1).map(([n]) => n));
-      const anchor = [...card.children].find((el) => later.has(el.dataset.part));
-      if (anchor) anchor.before(nodes);
-      else card.append(nodes);
+    this._keepLogPosition(() => {
+      const parts = this._renderData(this._data);
+      parts.forEach(([name, html], index) => {
+        if (keep.has(name)) return;
+        const old = [...card.children].filter((el) => el.dataset.part === name);
+        const nodes = this._partNodes(name, html);
+        if (old.length) {
+          old[0].before(nodes);
+          old.forEach((el) => el.remove());
+          return;
+        }
+        // The part had nothing to show before: insert it before the next part shown.
+        const later = new Set(parts.slice(index + 1).map(([n]) => n));
+        const anchor = [...card.children].find((el) => later.has(el.dataset.part));
+        if (anchor) anchor.before(nodes);
+        else card.append(nodes);
+      });
     });
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount && amount !== active) amount.value = this._bottleAmount;
     this._pendingRender = true;
+  }
+
+  /**
+   * Run `change` (which may rebuild the log), then size the log again and keep the entry
+   * at its top where it was, also when new entries arrived above it.
+   */
+  _keepLogPosition(change) {
+    const anchor = this._logReadingPosition();
+    change();
+    this._sizeLog(anchor);
+  }
+
+  /** The entry at the top of the scrolled log and how far it is from the top, or null. */
+  _logReadingPosition() {
+    const list = this._card?.querySelector("ul.log-scroll");
+    if (!list || list.scrollTop <= 0) return null;
+    const top = list.getBoundingClientRect().top;
+    const first = [...list.querySelectorAll(":scope > li[data-id]")].find((li) => li.getBoundingClientRect().bottom > top);
+    return first ? { id: first.dataset.id, offset: first.getBoundingClientRect().top - top, scrollTop: list.scrollTop } : null;
+  }
+
+  /**
+   * Make the log as tall as its first `log_visible` entries (day headings included), so
+   * the rest are scrolled to. Measured, because long entries wrap on narrow screens.
+   */
+  _sizeLog(anchor = null, again = false) {
+    const list = this._card?.querySelector("ul.log-scroll");
+    if (!list) return;
+    const visible = positiveInt(this._config.log_visible, 100, 6);
+    const entries = list.querySelectorAll(":scope > li:not(.day)");
+    let maxHeight = "";
+    if (entries.length > visible) {
+      // Measured from the top of the list's content (whatever it is scrolled to).
+      const height = entries[visible - 1].getBoundingClientRect().bottom - list.getBoundingClientRect().top + list.scrollTop;
+      // Not laid out yet (e.g. in a hidden view): an estimate, measured again on resize.
+      maxHeight = height > 0 ? `${Math.ceil(height)}px` : `${visible * 2.3}em`;
+    }
+    if (list.style.maxHeight !== maxHeight) {
+      noteScrollAnchor(); // the card's height changes: keep the page still
+      list.style.maxHeight = maxHeight;
+    }
+    list.classList.toggle("scrolls", Boolean(maxHeight));
+    if (!maxHeight) return;
+    if (anchor) {
+      const same = list.querySelector(`:scope > li[data-id="${CSS.escape(anchor.id)}"]`);
+      list.scrollTop = same
+        ? list.scrollTop + same.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.offset
+        : anchor.scrollTop;
+    }
+    this._logAnchor = anchor;
+    const restored = list.scrollTop;
+    // A fade at the bottom shows there is more (phones hide the scrollbar), until the end.
+    const atEnd = () => list.classList.toggle("at-end", list.scrollTop + list.clientHeight >= list.scrollHeight - 2);
+    list.onscroll = () => {
+      atEnd();
+      // Our own restore isn't someone scrolling.
+      if (Math.abs(list.scrollTop - restored) >= 1 || Date.now() - lastUserScroll < 1500) {
+        this._logScrolledAt = Date.now();
+        this._logAnchor = this._logReadingPosition();
+      }
+    };
+    atEnd();
+    // Home Assistant's icons draw a moment later and can make rows taller: measure again.
+    if (!again && typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        if (this._card?.contains(list)) this._sizeLog(this._logReadingPosition() ?? anchor, true);
+      });
+    }
   }
 
   _render() {
@@ -1965,13 +2070,15 @@ class BabyTrackerCard extends HTMLElement {
       // not every input type has a selection
     }
     noteScrollAnchor();
-    if (this._error) {
-      card.innerHTML = `<div class="message error">${esc(this._error.key ? t(this._error.key) : this._error)}</div>`;
-    } else if (!this._data) {
-      card.innerHTML = `<div class="message">${esc(t("loading"))}</div>`;
-    } else {
-      card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
-    }
+    this._keepLogPosition(() => {
+      if (this._error) {
+        card.innerHTML = `<div class="message error">${esc(this._error.key ? t(this._error.key) : this._error)}</div>`;
+      } else if (!this._data) {
+        card.innerHTML = `<div class="message">${esc(t("loading"))}</div>`;
+      } else {
+        card.replaceChildren(...this._renderData(this._data).map(([name, html]) => this._partNodes(name, html)));
+      }
+    });
     const amount = this.shadowRoot.querySelector("#bottle-amount");
     if (amount) amount.value = this._bottleAmount;
     const focused = focusId ? this.shadowRoot.getElementById(focusId) : null;
@@ -2519,7 +2626,7 @@ class BabyTrackerCard extends HTMLElement {
   _logHtml(d, now) {
     const entries = [...(d.events || [])]
       .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
-      .slice(0, Number(this._config.log_entries) || 10);
+      .slice(0, positiveInt(this._config.log_entries, 100, 20));
     let lastDay = "";
     const rows = entries
       .map((e) => {
@@ -2528,14 +2635,14 @@ class BabyTrackerCard extends HTMLElement {
         const heading = day !== lastDay ? `<li class="day">${esc(day)}</li>` : "";
         lastDay = day;
         const { emoji, text } = describe(e);
-        return `${heading}<li><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
+        return `${heading}<li data-id="${esc(e.id)}"><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
             <button class="icon" title="${esc(t("delete"))}" aria-label="${esc(t("delete"))}" data-action="delete" data-value="${esc(e.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
       })
       .join("");
     return `
         <div class="section">
           <div class="section-title">${esc(t("log.title"))}</div>
-          ${rows ? `<ul class="log">${rows}</ul>` : `<div class="message">${esc(t("nothing.full"))}</div>`}
+          ${rows ? `<ul class="log log-scroll">${rows}</ul>` : `<div class="message">${esc(t("nothing.full"))}</div>`}
         </div>`;
   }
 }
@@ -2697,6 +2804,10 @@ const STYLE = `
   .suggestion ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: none; }
   .suggestion.done ha-icon { color: var(--success-color, #43a047); }
   .log { list-style: none; margin: 0; padding: 0; }
+  .log.scrolls { overflow-y: auto; }
+  .log button.icon { width: 26px; height: 26px; align-items: center; justify-content: center; }
+  .log.scrolls:not(.at-end) { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .log li.day { border: none; padding-top: 10px; font-size: 0.8em; font-weight: 500; color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.04em; }
   .log .text { flex: 1; }
@@ -2869,6 +2980,7 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>${esc(t("ed.nights"))} <input type="number" min="1" max="${NIGHTS_MAX}" data-key="night_days" value="${esc(c.night_days)}"></label>
         <label>${esc(t("ed.night_from"))} <input type="time" data-key="night_start" value="${esc(c.night_start)}"> ${esc(t("ed.to"))} <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
         <small>${esc(t("ed.night_hint"))}</small>
+        <label>${esc(t("ed.log_visible"))} <input type="number" min="1" max="100" data-key="log_visible" value="${esc(c.log_visible)}"></label>
         <label>${esc(t("ed.log_entries"))} <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
         <label>${esc(t("ed.units"))} <select data-key="units">
           <option value="metric" ${c.units === "imperial" ? "" : "selected"}>${esc(t("ed.metric"))}</option>
