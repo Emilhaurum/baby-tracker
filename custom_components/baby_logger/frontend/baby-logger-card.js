@@ -7,13 +7,14 @@
  *   show_summary: true
  *   show_trends: true
  *   show_log: true
- *   log_entries: 20           entries in the log (scroll to see them all)
- *   log_visible: 6            entries shown before the log scrolls
+ *   log_entries: 10           entries in the log (20 when log_visible is set)
+ *   log_visible: 6            optional; entries shown before the log scrolls (no scrolling when unset)
  *   days: 7
  *   show_timeline: true
  *   timeline_days: 14         days shown in the sleep timeline
  *   timeline_group: 1         days per line (1 = every day, 7 = weekly average, ...)
  *   timeline_start_hour: 0    hour of day each line starts at (e.g. 18 to keep nights together)
+ *   timeline_details: false   tap a timeline line to see a sleep or awake period and its length
  *   show_nights: true
  *   night_days: 14            nights in the night sleep chart
  *   night_start: "21:00"      optional; defaults to the integration's "Night starts" setting
@@ -63,12 +64,11 @@ const DEFAULTS = {
   show_trends: true,
   show_timeline: true,
   show_log: true,
-  log_entries: 20,
-  log_visible: 6,
   days: 7,
   timeline_days: 14,
   timeline_group: 1,
   timeline_start_hour: 0,
+  timeline_details: false,
   show_nights: true,
   night_days: 14,
   night_start: "",
@@ -318,8 +318,9 @@ export const I18N = {
     "ed.night_from": "Night from",
     "ed.to": "to",
     "ed.night_hint": "Leave the night times empty to use the integration's Night starts / Night ends settings.",
-    "ed.log_entries": "Log entries in total (scroll to see them)",
-    "ed.log_visible": "Log entries shown before scrolling",
+    "ed.log_entries": "Log entries",
+    "ed.log_visible": "Log entries shown before scrolling (empty: no scrolling)",
+    "ed.tl_details": "Tap the timeline to see sleep and awake periods",
     "ed.units": "Growth units",
     "ed.metric": "Metric (kg, cm)",
     "ed.imperial": "Imperial (lb + oz, in)",
@@ -514,8 +515,9 @@ export const I18N = {
     "ed.night_from": "Nat fra",
     "ed.to": "til",
     "ed.night_hint": "Lad nattetiderne være tomme for at bruge integrationens indstillinger for Natten starter / Natten slutter.",
-    "ed.log_entries": "Linjer i loggen i alt (rul for at se dem)",
-    "ed.log_visible": "Linjer vist i loggen, før den ruller",
+    "ed.log_entries": "Linjer i loggen",
+    "ed.log_visible": "Linjer vist i loggen, før den ruller (tom: ingen rulning)",
+    "ed.tl_details": "Tryk på tidslinjen for at se søvn- og vågenperioder",
     "ed.units": "Enheder for vækst",
     "ed.metric": "Metrisk (kg, cm)",
     "ed.imperial": "Imperial (lb + oz, in)",
@@ -859,7 +861,7 @@ export function timelinePick(intervals, row, fraction, now = new Date()) {
   return { kind: seg.kind, text, highlight };
 }
 
-function timelineHtml(rows, settings, now, pick = null) {
+function timelineHtml(rows, settings, now, pick = null, tappable = false) {
   const ticks = [0, 6, 12, 18, 24]
     .map((h) => {
       const hour = String((settings.startHour + h) % 24).padStart(2, "0");
@@ -879,7 +881,7 @@ function timelineHtml(rows, settings, now, pick = null) {
         ? `<div class="tl-detail${picked.kind ? ` ${picked.kind}` : ""}"><span>${esc(picked.text)}</span>
             <button class="tl-close" title="${esc(t("tl.close"))}" aria-label="${esc(t("tl.close"))}" data-action="timeline-close"><ha-icon icon="mdi:close"></ha-icon></button></div>`
         : "";
-      return `<div class="tl-row${picked ? " picked" : ""}" title="${esc(title)}" data-action="timeline-pick" data-start="${row.start.getTime()}"><span class="tl-label">${esc(label)}</span>
+      return `<div class="tl-row${picked ? " picked" : ""}" title="${esc(title)}"${tappable ? ` data-action="timeline-pick" data-start="${row.start.getTime()}"` : ""}><span class="tl-label">${esc(label)}</span>
         <span class="tl-bar" style="background:${timelineGradient(row)}">${marks}</span><span class="tl-value">${value}</span></div>${detail}`;
     })
     .join("");
@@ -2292,12 +2294,13 @@ class BabyTrackerCard extends HTMLElement {
           this._tlShown = { rows, intervals };
           // The tapped point, kept by the line's date so it survives the minute updates.
           let pick = null;
-          const row = this._tlPick && rows.find((r) => r.start.getTime() === this._tlPick.start);
+          const tappable = Boolean(cfg.timeline_details);
+          const row = tappable && this._tlPick && rows.find((r) => r.start.getTime() === this._tlPick.start);
           if (row) {
             const detail = timelinePick(intervals, row, this._tlPick.fraction, now);
             if (detail) pick = { ...detail, start: this._tlPick.start, fraction: this._tlPick.fraction };
           }
-          content = timelineHtml(rows, settings, now, pick);
+          content = timelineHtml(rows, settings, now, pick, tappable);
         }
         const title = esc(settings.group === 1 ? t("tl.title") : t("tl.title_avg", { n: settings.group }));
         return `
@@ -2776,9 +2779,11 @@ class BabyTrackerCard extends HTMLElement {
   }
 
   _logHtml(d, now) {
+    // Scrolling is opt-in: without log_visible the log is a plain list, as before.
+    const scroll = positiveInt(this._config.log_visible, 100, 0) > 0;
     const entries = [...(d.events || [])]
       .sort((a, b) => new Date(b.end || b.start) - new Date(a.end || a.start))
-      .slice(0, positiveInt(this._config.log_entries, 100, 20));
+      .slice(0, positiveInt(this._config.log_entries, 100, scroll ? 20 : 10));
     let lastDay = "";
     const rows = entries
       .map((e) => {
@@ -2794,7 +2799,7 @@ class BabyTrackerCard extends HTMLElement {
     return `
         <div class="section">
           <div class="section-title">${esc(t("log.title"))}</div>
-          ${rows ? `<ul class="log log-scroll">${rows}</ul>` : `<div class="message">${esc(t("nothing.full"))}</div>`}
+          ${rows ? `<ul class="log${scroll ? " log-scroll" : ""}">${rows}</ul>` : `<div class="message">${esc(t("nothing.full"))}</div>`}
         </div>`;
   }
 }
@@ -2967,7 +2972,7 @@ const STYLE = `
   .suggestion.done ha-icon { color: var(--success-color, #43a047); }
   .log { list-style: none; margin: 0; padding: 0; }
   .log.scrolls { overflow-y: auto; }
-  .log button.icon { width: 26px; height: 26px; align-items: center; justify-content: center; }
+  .log-scroll button.icon { width: 26px; height: 26px; align-items: center; justify-content: center; }
   .log.scrolls:not(.at-end) { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); }
   .log li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
@@ -3142,8 +3147,9 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>${esc(t("ed.nights"))} <input type="number" min="1" max="${NIGHTS_MAX}" data-key="night_days" value="${esc(c.night_days)}"></label>
         <label>${esc(t("ed.night_from"))} <input type="time" data-key="night_start" value="${esc(c.night_start)}"> ${esc(t("ed.to"))} <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
         <small>${esc(t("ed.night_hint"))}</small>
-        <label>${esc(t("ed.log_visible"))} <input type="number" min="1" max="100" data-key="log_visible" value="${esc(c.log_visible)}"></label>
-        <label>${esc(t("ed.log_entries"))} <input type="number" min="1" max="100" data-key="log_entries" value="${esc(c.log_entries)}"></label>
+        <label><input type="checkbox" data-key="timeline_details" ${c.timeline_details ? "checked" : ""}> ${esc(t("ed.tl_details"))}</label>
+        <label>${esc(t("ed.log_entries"))} <input type="number" min="1" max="100" data-key="log_entries" placeholder="${c.log_visible ? 20 : 10}" value="${esc(c.log_entries ?? "")}"></label>
+        <label>${esc(t("ed.log_visible"))} <input type="number" min="1" max="100" data-key="log_visible" value="${esc(c.log_visible ?? "")}"></label>
         <label>${esc(t("ed.units"))} <select data-key="units">
           <option value="metric" ${c.units === "imperial" ? "" : "selected"}>${esc(t("ed.metric"))}</option>
           <option value="imperial" ${c.units === "imperial" ? "selected" : ""}>${esc(t("ed.imperial"))}</option>
