@@ -96,6 +96,11 @@ test("lines averaging several days count the days asleep at that time", () => {
   // 16:00 hasn't happened yet today: only two days count.
   assert.deepEqual((({ asleep, days }) => ({ asleep, days }))(timelineSlotAt(SLEEPS, line, f(16), NOW)), { asleep: 0, days: 2 });
   assert.equal(timelinePick(SLEEPS, line, f(3), NOW).text, `${hm("2026-05-03T03:00:00+02:00")}: asleep on 2 of 3 days`);
+  // One day counted: "1 day", in both languages.
+  const [two] = rows(SLEEPS, 2, 1);
+  assert.equal(timelinePick(SLEEPS, two, f(16), NOW).text, `${hm("2026-05-04T16:00:00+02:00")}: asleep on 0 of 1 day`);
+  setLanguage("da");
+  assert.equal(timelinePick(SLEEPS, two, f(16), NOW).text, "16.00: sov på 0 af 1 dag");
 });
 
 test("an awake period still going with no sleep logged before it", () => {
@@ -122,11 +127,11 @@ test("averaged lines use the same days as the shading, also across daylight savi
   const now = at("2026-03-29T23:59:00+02:00");
   const sleeps = Array.from({ length: 7 }, (_, i) => {
     const day = new Date(2026, 2, 23 + i);
-    return [new Date(day.getFullYear(), day.getMonth(), day.getDate(), 5, 0), new Date(day.getFullYear(), day.getMonth(), day.getDate(), 7, 0)];
+    return [new Date(day.getFullYear(), day.getMonth(), day.getDate(), 5, 0), new Date(day.getFullYear(), day.getMonth(), day.getDate(), 6, 30)];
   });
   const [line] = timelineRows(sleeps, { group: 7, lines: 1, startHour: 0 }, now);
   assert.equal(line.dayBounds.length, 7);
-  // 06:00 on the axis: asleep every day, the DST day included, and labelled 06:00.
+  // 06:00 on the axis: asleep (05:00-06:30) every day, the 23-hour day included.
   const slot = timelineSlotAt(sleeps, line, f(6), now);
   assert.deepEqual({ asleep: slot.asleep, days: slot.days, minutes: slot.minutes }, { asleep: 7, days: 7, minutes: 360 });
   assert.equal(timelinePick(sleeps, line, f(6), now).text, `${hm("2026-03-23T06:00:00+01:00")}: asleep on 7 of 7 days`);

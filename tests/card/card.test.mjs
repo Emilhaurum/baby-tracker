@@ -369,8 +369,16 @@ test("tapping the sleep timeline shows a period and its length", async () => {
   // Another place shows the awake period instead.
   await tapAt(today, 9);
   assert.match(await card.locator(".tl-detail").textContent(), /Awake .*5h 50m/);
-  // The same place again, or the close button, closes it.
-  await tapAt(today, 9);
+  // Tapping the same period elsewhere closes it ...
+  await tapAt(today, 12.1);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // ... but a nap right next to the period shown (12:20-13:50) is shown, not a close.
+  await tapAt(today, 12.1);
+  assert.match(await card.locator(".tl-detail").textContent(), /Awake /);
+  await tapAt(today, 12.45);
+  assert.match(await card.locator(".tl-detail").textContent(), /Asleep .*1h 30m/);
+  // The same period again, or the close button, closes it.
+  await tapAt(today, 13);
   assert.equal(await card.locator(".tl-detail").count(), 0);
   await tapAt(today, 9);
   await card.locator('[data-action="timeline-close"]').click();
@@ -385,6 +393,12 @@ test("tapping the sleep timeline shows a period and its length", async () => {
   // Taps on the date or the hours aren't taps on the line.
   await today.locator(".tl-label").click();
   await today.locator(".tl-value").click();
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  // Switching to another baby closes it.
+  await tapAt(today, 3);
+  assert.equal(await card.locator(".tl-detail").count(), 1);
+  await page.evaluate(() => document.querySelector("baby-logger-card").setConfig({ parts: ["timeline"], entry_id: "e1" }));
+  await card.locator(".tl-row:not(.tl-axis)").first().waitFor();
   assert.equal(await card.locator(".tl-detail").count(), 0);
   assert.deepEqual(errors, []);
   await context.close();
