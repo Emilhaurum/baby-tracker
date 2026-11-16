@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 - Card: tap a line of the sleep timeline to see the sleep or awake period there, with
   its start, end and length; the period is outlined on the line. A sleep across midnight
