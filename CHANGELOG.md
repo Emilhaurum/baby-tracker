@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Card: the scrolling log and the timeline taps from 1.4.0 are now opt-in, so cards
+  without the new options look and work as before 1.4.0. Set `log_visible` (e.g. `6`)
+  for a scrolling log; `log_entries` then defaults to 20, otherwise to 10 as before. Set
+  `timeline_details: true` to tap the sleep timeline. Both are also in the card editor.
+
 ## 1.4.0
 
 - Card: tap a line of the sleep timeline to see the sleep or awake period there, with

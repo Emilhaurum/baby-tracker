@@ -108,9 +108,10 @@ type: custom:baby-logger-card
 | `timeline_days` | `14` | Days covered by the sleep timeline (up to 1098). |
 | `timeline_group` | `1` | Days per timeline line: `1` shows every day, a larger number (e.g. `7`) averages that many days per line. |
 | `timeline_start_hour` | `0` | Hour each timeline line starts at. Use e.g. `18` to keep each night on one line. |
+| `timeline_details` | `false` | Tap a timeline line to see the sleep or awake period there, with its start, end and length. |
 | `show_log` | `true` | Show the latest entries, each with a delete button. |
-| `log_entries` | `20` | Number of entries in the log; scroll in the log to see them all. |
-| `log_visible` | `6` | Entries shown before the log scrolls. |
+| `log_entries` | `10` (`20` with `log_visible`) | Number of entries in the log. |
+| `log_visible` | not set | Entries shown before the log scrolls, e.g. `6`. Scroll in the log to see the rest. Leave out for a log that doesn't scroll. |
 | `days` | `7` | Days shown in the charts (1–31). |
 
 Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to delete it.
@@ -128,7 +129,7 @@ Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to dele
 | `summary` | Last night and daytime sleep. |
 | `trends` | The 7-day diaper, feeding and sleep charts. |
 | `nights` | The night sleep chart. |
-| `timeline` | The sleep timeline. Tap a line to see the length of a sleep or awake period. |
+| `timeline` | The sleep timeline. With `timeline_details: true`, tap a line to see the length of a sleep or awake period. |
 | `log` | The latest entries. |
 | `growth` | Weight and length charts, the latest measurements and a form to add one. |
 | `milestones` | The milestone timeline, with a window to add milestones. |

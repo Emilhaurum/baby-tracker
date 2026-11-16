@@ -355,8 +355,20 @@ function manyEntries(n) {
   return snapshot({ events });
 }
 
-test("the log shows log_visible entries and scrolls to the rest", async () => {
+test("without log_visible the log doesn't scroll and shows 10 entries", async () => {
   const { page, context, errors } = await mount({ config: { parts: ["log"] }, snap: manyEntries(30) });
+  const card = page.locator("baby-logger-card");
+  assert.equal(await card.locator("ul.log li:not(.day)").count(), 10);
+  assert.equal(await card.locator("ul.log-scroll").count(), 0);
+  const list = card.locator("ul.log");
+  assert.equal(await list.evaluate((ul) => ul.style.maxHeight), "");
+  assert.equal(await list.evaluate((ul) => getComputedStyle(ul).overflowY), "visible");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("the log shows log_visible entries and scrolls to the rest", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["log"], log_visible: 6 }, snap: manyEntries(30) });
   const list = page.locator("baby-logger-card").locator("ul.log-scroll");
   // 20 entries by default, 6 of them visible (with the day headings between them).
   assert.equal(await list.locator("li:not(.day)").count(), 20);
@@ -397,7 +409,7 @@ test("the log shows log_visible entries and scrolls to the rest", async () => {
 });
 
 test("a scrolled log keeps its size and the entry you're reading", async () => {
-  const { page, context, errors } = await mount({ config: { parts: ["header", "undo", "log"] }, snap: manyEntries(30) });
+  const { page, context, errors } = await mount({ config: { parts: ["header", "undo", "log"], log_visible: 6 }, snap: manyEntries(30) });
   const list = page.locator("baby-logger-card").locator("ul.log-scroll");
   const height = await list.evaluate((ul) => ul.clientHeight);
   // Scroll so "d5" is the first entry shown.
@@ -431,7 +443,7 @@ test("a scrolled log keeps its size and the entry you're reading", async () => {
 });
 
 test("the log isn't rebuilt while it is being scrolled", async () => {
-  const { page, context } = await mount({ config: { parts: ["header", "log"] }, snap: manyEntries(30) });
+  const { page, context } = await mount({ config: { parts: ["header", "log"], log_visible: 6 }, snap: manyEntries(30) });
   await page.evaluate(() => {
     const ul = document.querySelector("baby-logger-card").shadowRoot.querySelector("ul.log-scroll");
     window.oldList = ul;
@@ -458,14 +470,19 @@ test("log_visible and log_entries can be changed; short logs don't scroll", asyn
   const third = await list.evaluate((ul) => Math.ceil(ul.querySelectorAll(":scope > li:not(.day)")[2].getBoundingClientRect().bottom - ul.getBoundingClientRect().top));
   assert.ok(Math.abs((await list.evaluate((ul) => ul.clientHeight)) - third) <= 2);
   await context.close();
-  // 0 (or nonsense) means the default, for both options.
-  ({ page, context } = await mount({ config: { parts: ["log"], log_entries: 0, log_visible: 0 }, snap: manyEntries(30) }));
+  // 0 (or nonsense) means the default: log_entries 20 when scrolling ...
+  ({ page, context } = await mount({ config: { parts: ["log"], log_entries: 0, log_visible: 6 }, snap: manyEntries(30) }));
   list = page.locator("baby-logger-card").locator("ul.log-scroll");
   assert.equal(await list.locator("li:not(.day)").count(), 20);
   const sixth = await list.evaluate((ul) => Math.ceil(ul.querySelectorAll(":scope > li:not(.day)")[5].getBoundingClientRect().bottom - ul.getBoundingClientRect().top));
   assert.ok(Math.abs((await list.evaluate((ul) => ul.clientHeight)) - sixth) <= 2);
   await context.close();
-  ({ page, context } = await mount({ config: { parts: ["log"] }, snap: manyEntries(4) }));
+  // ... and log_visible 0 is no scrolling.
+  ({ page, context } = await mount({ config: { parts: ["log"], log_visible: 0 }, snap: manyEntries(30) }));
+  assert.equal(await page.locator("baby-logger-card").locator("ul.log-scroll").count(), 0);
+  assert.equal(await page.locator("baby-logger-card").locator("ul.log li:not(.day)").count(), 10);
+  await context.close();
+  ({ page, context } = await mount({ config: { parts: ["log"], log_visible: 6 }, snap: manyEntries(4) }));
   list = page.locator("baby-logger-card").locator("ul.log-scroll");
   assert.equal(await list.evaluate((ul) => ul.classList.contains("scrolls")), false);
   assert.equal(await list.evaluate((ul) => ul.style.maxHeight), "");
@@ -473,14 +490,23 @@ test("log_visible and log_entries can be changed; short logs don't scroll", asyn
 });
 
 test("tapping the sleep timeline shows a period and its length", async () => {
-  const { page, context, errors } = await mount({ config: { parts: ["timeline"] } });
-  const card = page.locator("baby-logger-card");
-  const today = card.locator(".tl-row:not(.tl-axis)").first();
-  // Tap today's line at 03:00 (the night's sleep, 21:30-06:30) and at 09:00 (awake).
+  // Without timeline_details the timeline can't be tapped.
+  let { page, context, errors } = await mount({ config: { parts: ["timeline"] } });
+  let card = page.locator("baby-logger-card");
+  let today = card.locator(".tl-row:not(.tl-axis)").first();
   const tapAt = async (row, hours) => {
     const box = await row.locator(".tl-bar").boundingBox();
     await page.mouse.click(box.x + (box.width * hours) / 24, box.y + box.height / 2);
   };
+  assert.equal(await card.locator('[data-action="timeline-pick"]').count(), 0);
+  await tapAt(today, 3);
+  assert.equal(await card.locator(".tl-detail").count(), 0);
+  await context.close();
+
+  ({ page, context, errors } = await mount({ config: { parts: ["timeline"], timeline_details: true } }));
+  card = page.locator("baby-logger-card");
+  today = card.locator(".tl-row:not(.tl-axis)").first();
+  // Tap today's line at 03:00 (the night's sleep, 21:30-06:30) and at 09:00 (awake).
   await tapAt(today, 3);
   const detail = card.locator(".tl-detail");
   assert.equal(await detail.count(), 1);
@@ -523,7 +549,7 @@ test("tapping the sleep timeline shows a period and its length", async () => {
   // Switching to another baby closes it.
   await tapAt(today, 3);
   assert.equal(await card.locator(".tl-detail").count(), 1);
-  await page.evaluate(() => document.querySelector("baby-logger-card").setConfig({ parts: ["timeline"], entry_id: "e1" }));
+  await page.evaluate(() => document.querySelector("baby-logger-card").setConfig({ parts: ["timeline"], timeline_details: true, entry_id: "e1" }));
   await card.locator(".tl-row:not(.tl-axis)").first().waitFor();
   assert.equal(await card.locator(".tl-detail").count(), 0);
   assert.deepEqual(errors, []);
@@ -605,6 +631,14 @@ test("editor writes parts and buttons", async () => {
     parts: ["header", "undo", "tiles", "summary", "trends", "nights", "timeline", "log"],
     log_entries: 5,
   });
+  // The opt-in options: on writes them, off removes them again.
+  await editor.locator('input[data-key="timeline_details"]').check();
+  assert.equal((await lastConfig()).timeline_details, true);
+  await editor.locator('input[data-key="timeline_details"]').uncheck();
+  assert.equal("timeline_details" in (await lastConfig()), false);
+  await editor.locator('input[data-key="log_visible"]').fill("6");
+  await editor.locator('input[data-key="log_visible"]').press("Tab");
+  assert.equal((await lastConfig()).log_visible, 6);
   await context.close();
 });
 
