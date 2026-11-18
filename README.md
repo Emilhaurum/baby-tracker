@@ -47,6 +47,11 @@ Everything is stored locally in Home Assistant.
 - **Milestones**: a timeline of 31 common milestones (holding up their head, rolling,
   sitting, crawling, first word, first steps …) with typical ages, plus your own. Adding one
   suggests similar milestones as you type.
+- **Medicine & care**: log medicine, temperatures, notes and types of your own (such as
+  🛁 Bath, or Pumping in ml) without a permanent button. Start a treatment, such as a
+  medicine every 6 hours for 5 days, to get a tile with a **Give** button and when the next
+  dose is due, which disappears when the treatment ends. A *Next dose* sensor can remind you
+  on your phone. Temperatures and other entries can be charted, also in the trends.
 - **Several babies**: add the integration once per baby.
 - **English and Danish**: setup, entities, actions, the logbook and the card follow your
   Home Assistant language (see [Languages](#languages)).
@@ -92,10 +97,10 @@ type: custom:baby-logger-card
 | Option | Default | Description |
 | --- | --- | --- |
 | `entry_id` | first baby | Which baby to show. The visual editor lets you pick by name. |
-| `parts` | see below | The parts to show, in order: `header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`, `growth`, `milestones`. When set, the `show_*` options are ignored. |
+| `parts` | see below | The parts to show, in order: `header`, `tiles`, `buttons`, `undo`, `summary`, `trends`, `nights`, `timeline`, `log`, `growth`, `milestones`, `care`. When set, the `show_*` options are ignored. |
 | `buttons` | all, see below | The quick buttons of the `buttons` part, in order. |
 | `buttons_columns` | `3` | Quick buttons per row. |
-| `units` | `metric` | Units for growth: `metric` (kg, cm) or `imperial` (lb + oz, in). |
+| `units` | `metric` | Units for growth and temperature: `metric` (kg, cm, °C) or `imperial` (lb + oz, in, °F). |
 | `growth_entries` | `5` | Measurements listed under the growth charts (0 hides the list). |
 | `growth_list` | `collapsed` | Whether the measurement list starts `collapsed` or `expanded`. |
 | `language` | `auto` | The card's language: `auto` (the Home Assistant user's language), `en` or `da`. |
@@ -113,6 +118,8 @@ type: custom:baby-logger-card
 | `log_entries` | `10` (`20` with `log_visible`) | Number of entries in the log. |
 | `log_visible` | not set | Entries shown before the log scrolls, e.g. `6`. Scroll in the log to see the rest. Leave out for a log that doesn't scroll. |
 | `days` | `7` | Days shown in the charts (1–31). |
+| `care_charts` | what has entries | Charts in the `care` part, e.g. `[temperature, medicine]` (see [Medicine and care](#medicine-and-care)). `none` shows no charts. |
+| `care_trends` | none | Medicine & care charts to add to the `trends` part, e.g. `[temperature]`. |
 
 Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to delete it.
 
@@ -133,6 +140,7 @@ Bottle feeds ask for an optional amount. Tap the ✕ next to a log entry to dele
 | `log` | The latest entries. |
 | `growth` | Weight and length charts, the latest measurements and a form to add one. |
 | `milestones` | The milestone timeline, with a window to add milestones. |
+| `care` | Medicine & care: treatments, adding entries, and charts. |
 
 Without `parts` the card shows `header`, `undo` and `tiles`, followed by the parts turned
 on with the `show_*` options, so existing cards look the same. If `undo` isn't listed, the
@@ -227,6 +235,57 @@ worried.
 ![Milestone timeline](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/milestones.png)
 ![Adding a milestone](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/milestone-add.png)
 
+### Medicine and care
+
+Add `care` to `parts` to log things that don't need a permanent button, such as medicine
+for a few days:
+
+```yaml
+type: custom:baby-logger-card
+parts: [buttons, care, log]
+```
+
+Tap **Add** and pick what to log:
+
+- **Medicine**: what was given, e.g. *Paracetamol 120 mg*. Medicine you gave recently is
+  suggested, so a tap fills it in.
+- **Temperature**: in °C, or °F with `units: imperial` (stored in °C).
+- **Note**: anything else, e.g. a vaccination or a visit to the doctor.
+- **Your own types**: tap **New type** to add one with a name, an emoji and, if you like, a
+  unit such as ml. A type with a unit asks for a number each time. Types you no longer need
+  can be removed there; their entries are kept.
+- **Treatment**: a medicine with a dose, how often it is given (every 4, 6, 8, 12 or 24 hours,
+  or as needed) and for how many days (or until you stop it).
+
+Every entry has an optional time (now by default). Entries show up in the log, the logbook
+and the trends, can be deleted with ✕ and undone like everything else.
+
+While a treatment runs, it has a tile with the time of the last dose, when the next dose is
+due, which day of the treatment it is, and a **Give** button that logs a dose. The tile turns
+orange when a dose is due, and disappears by itself when the treatment ends. Tap ✕ to stop
+a treatment early.
+
+**Charts**: without `care_charts` the part charts temperatures and medicine doses per day,
+when there are any. The temperature chart shades the fever range (38 °C / 100.4 °F and
+above) and marks when medicine was given. Choose the charts yourself with `care_charts`, and
+add them to the trends with `care_trends`. Each item is one of:
+
+| Item | Chart |
+| --- | --- |
+| `temperature` | Temperatures as a line. |
+| `medicine` | Medicine doses per day. |
+| The name of a type of your own, e.g. `Bath` | Entries per day; a line of the numbers for a type with a unit. |
+| Anything else, e.g. `paracetamol` | Doses per day of the medicine whose text contains it. |
+
+```yaml
+type: custom:baby-logger-card
+parts: [trends, care]
+care_charts: [temperature, paracetamol, Pumping]
+care_trends: [temperature]
+```
+
+![Medicine and care](https://raw.githubusercontent.com/Emilhaurum/baby-tracker/main/docs/care.png)
+
 ### More examples
 
 A card with the last 30 nights, counting the night as 20:00–06:00:
@@ -277,6 +336,8 @@ Each baby gets a device with these entities (shown here for a baby called *Alex*
 | `sensor.alex_last_woke_up` | When the baby last woke up. |
 | `sensor.alex_weight` | The latest weight (attribute `measured`: its date). Shown in kg, or lb on systems using US customary units. |
 | `sensor.alex_length` | The latest length / height (attribute `measured`). Shown in cm, or inches with US customary units. |
+| `sensor.alex_temperature` | The latest temperature (attribute `measured`). Shown in °C, or °F with US customary units. |
+| `sensor.alex_next_dose` | When the next dose of a treatment is due (attributes `treatment`, `treatment_id`, `last_dose`, and `treatments` with every active treatment). Unknown when no dose is due. |
 | `switch.alex_sleeping` | On while asleep. Turn it on or off to log sleep. |
 | `button.alex_diaper_wet` / `_dirty` / `_wet_and_dirty` | Log a diaper. |
 | `button.alex_feed_left` / `_right` / `_bottle` | Log a feeding. |
@@ -309,6 +370,12 @@ can't be in the future.
 | `baby_logger.clear_milestone` | `milestone` |
 | `baby_logger.add_milestone` | `name`, `date` (leave out to add it as not reached yet), `note` |
 | `baby_logger.delete_milestone` | `milestone` (only ones you added) |
+| `baby_logger.log_entry` | `type` (`medicine`, `temperature`, `note`, or the name or id of a type you added), `text` (needed for medicine and notes), `value` (the temperature, or a number for a type with a unit), `units` (`metric`: °C, default; `imperial`: °F), `time` |
+| `baby_logger.add_care_type` | `name`, `emoji`, `unit` |
+| `baby_logger.delete_care_type` | `care_type` (name or id; logged entries are kept) |
+| `baby_logger.add_treatment` | `name`, `dose`, `every_hours` (leave out for as needed), `days` (leave out for until stopped), `start` |
+| `baby_logger.give_dose` | `treatment_id`, `time` |
+| `baby_logger.stop_treatment` | `treatment_id` |
 
 `date` defaults to today and can't be in the future or before the baby's birth date. The
 built-in milestone keys are listed in [`milestones.py`](custom_components/baby_logger/milestones.py).
@@ -328,7 +395,9 @@ data:
 Every action fires a `baby_logger_event` with `config_entry_id`, `name`, `action`
 (`diaper`, `feeding`, `sleep`, `wake`, `undo`, `delete`, `add_sleep`, `update_sleep`,
 `growth`, `delete_growth`, `milestone`, `clear_milestone`, `add_milestone`,
-`delete_milestone`) and details such as `type`, `side`, `minutes` or `milestone_name`.
+`delete_milestone`, `care`, `dose`, `add_care_type`, `delete_care_type`, `add_treatment`,
+`stop_treatment`) and details such as `type`, `side`, `minutes`, `milestone_name`, `text` or
+`value`.
 
 ```yaml
 triggers:
@@ -354,6 +423,18 @@ actions:
   - action: notify.mobile_app_phone
     data:
       message: "Time to feed Alex (next: {{ states('sensor.alex_next_feeding_side') }})"
+```
+
+A reminder when the next dose of a treatment is due:
+
+```yaml
+triggers:
+  - trigger: time
+    at: sensor.alex_next_dose
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      message: "Time for {{ state_attr('sensor.alex_next_dose', 'treatment') }}"
 ```
 
 ## Languages

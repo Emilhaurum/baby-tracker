@@ -35,7 +35,7 @@ async def test_device_and_entities(hass: HomeAssistant, entry: MockConfigEntry) 
     assert (DOMAIN, entry.entry_id) in device.identifiers
     assert device.name == "Alex"
     entities = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
-    assert len(entities) == 14 + 7 + 1 + 1 + 1 + 2
+    assert len(entities) == 16 + 7 + 1 + 1 + 1 + 2
     assert all(e.device_id == device.id for e in entities)
 
 
@@ -206,7 +206,7 @@ async def test_logbook_platform(hass: HomeAssistant) -> None:
 async def test_diagnostics(hass: HomeAssistant, entry: MockConfigEntry, hass_client) -> None:
     await call(hass, "log_diaper", type="wet")
     result = await get_diagnostics_for_config_entry(hass, hass_client, entry)
-    assert result["tracker"]["event_counts"] == {"diaper": 1, "feeding": 0, "sleep": 0}
+    assert result["tracker"]["event_counts"] == {"diaper": 1, "feeding": 0, "sleep": 0, "care": 0}
     assert "Alex" not in str(result)
 
 

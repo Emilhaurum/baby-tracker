@@ -241,6 +241,31 @@
             "name": "Measured"
           }
         }
+      },
+      "next_dose": {
+        "name": "Next dose",
+        "state_attributes": {
+          "treatment": {
+            "name": "Treatment"
+          },
+          "treatment_id": {
+            "name": "Treatment ID"
+          },
+          "last_dose": {
+            "name": "Last dose"
+          },
+          "treatments": {
+            "name": "Treatments"
+          }
+        }
+      },
+      "temperature": {
+        "name": "Temperature",
+        "state_attributes": {
+          "measured": {
+            "name": "Measured"
+          }
+        }
       }
     },
     "switch": {
@@ -322,6 +347,33 @@
     },
     "date_before_birth": {
       "message": "The date can't be before the birth date ({birth_date})."
+    },
+    "care_text_required": {
+      "message": "Write what was given or noted."
+    },
+    "temperature_required": {
+      "message": "Enter the temperature."
+    },
+    "temperature_out_of_range": {
+      "message": "The temperature must be between {min} and {max} °C."
+    },
+    "care_type_not_found": {
+      "message": "Unknown entry type: {type}."
+    },
+    "care_type_exists": {
+      "message": "There is already a type called {type}."
+    },
+    "care_name_empty": {
+      "message": "Please enter a name."
+    },
+    "treatment_not_found": {
+      "message": "No treatment with ID {treatment} was found."
+    },
+    "every_hours_out_of_range": {
+      "message": "The time between doses must be between {min} and {max} hours."
+    },
+    "days_out_of_range": {
+      "message": "A treatment can last from 1 to {max} days."
     }
   },
   "selector": {
@@ -343,6 +395,19 @@
       "options": {
         "metric": "Metric (kg, cm)",
         "imperial": "Imperial (lb, in)"
+      }
+    },
+    "care_type": {
+      "options": {
+        "medicine": "Medicine",
+        "temperature": "Temperature",
+        "note": "Note"
+      }
+    },
+    "temperature_units": {
+      "options": {
+        "metric": "Celsius (°C)",
+        "imperial": "Fahrenheit (°F)"
       }
     }
   },
@@ -570,6 +635,134 @@
         "milestone": {
           "name": "Milestone",
           "description": "The ID of the milestone you added."
+        }
+      }
+    },
+    "log_entry": {
+      "name": "Log entry",
+      "description": "Logs medicine, a temperature, a note or an entry of a type of your own.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Medicine, temperature, note, or the name or ID of a type you added."
+        },
+        "text": {
+          "name": "Text",
+          "description": "What was given or noted, e.g. Paracetamol 120 mg. Needed for medicine and notes."
+        },
+        "value": {
+          "name": "Value",
+          "description": "The temperature, or a number in the unit of your own type (e.g. ml)."
+        },
+        "units": {
+          "name": "Temperature unit",
+          "description": "The unit of a temperature."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened. Defaults to now."
+        }
+      }
+    },
+    "add_care_type": {
+      "name": "Add entry type",
+      "description": "Adds a type of entry of your own, e.g. Bath, or Pumping in ml.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "name": {
+          "name": "Name",
+          "description": "The name of the type, e.g. Bath."
+        },
+        "emoji": {
+          "name": "Emoji",
+          "description": "Shown in the log, e.g. 🛁."
+        },
+        "unit": {
+          "name": "Unit",
+          "description": "Optional unit for a number logged with each entry, e.g. ml. Entries with a number are charted as a line."
+        }
+      }
+    },
+    "delete_care_type": {
+      "name": "Delete entry type",
+      "description": "Removes a type you added from the choices. Entries already logged are kept.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "care_type": {
+          "name": "Type",
+          "description": "The name or ID of the type."
+        }
+      }
+    },
+    "add_treatment": {
+      "name": "Add treatment",
+      "description": "Starts a treatment: a medicine given every few hours, for some days or until stopped.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "name": {
+          "name": "Medicine",
+          "description": "e.g. Paracetamol."
+        },
+        "dose": {
+          "name": "Dose",
+          "description": "e.g. 120 mg."
+        },
+        "every_hours": {
+          "name": "Every",
+          "description": "Hours between doses. Leave empty for a medicine given as needed."
+        },
+        "days": {
+          "name": "Days",
+          "description": "How many days. Leave empty to give it until stopped."
+        },
+        "start": {
+          "name": "Start",
+          "description": "When the treatment starts. Defaults to now."
+        }
+      }
+    },
+    "give_dose": {
+      "name": "Give dose",
+      "description": "Logs a dose of a treatment.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "treatment_id": {
+          "name": "Treatment",
+          "description": "The ID of the treatment."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it was given. Defaults to now."
+        }
+      }
+    },
+    "stop_treatment": {
+      "name": "Stop treatment",
+      "description": "Ends a treatment now.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "treatment_id": {
+          "name": "Treatment",
+          "description": "The ID of the treatment."
         }
       }
     }

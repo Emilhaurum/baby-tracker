@@ -88,6 +88,12 @@
       },
       "length": {
         "default": "mdi:human-male-height"
+      },
+      "next_dose": {
+        "default": "mdi:pill-multiple"
+      },
+      "temperature": {
+        "default": "mdi:thermometer"
       }
     },
     "switch": {
@@ -146,6 +152,24 @@
     },
     "delete_milestone": {
       "service": "mdi:delete"
+    },
+    "log_entry": {
+      "service": "mdi:note-plus-outline"
+    },
+    "add_care_type": {
+      "service": "mdi:shape-plus-outline"
+    },
+    "delete_care_type": {
+      "service": "mdi:shape-outline"
+    },
+    "add_treatment": {
+      "service": "mdi:pill"
+    },
+    "give_dose": {
+      "service": "mdi:needle"
+    },
+    "stop_treatment": {
+      "service": "mdi:pill-off"
     }
   }
 }

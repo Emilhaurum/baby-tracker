@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfLength, UnitOfMass, UnitOfTime, UnitOfVolume
+from homeassistant.const import UnitOfLength, UnitOfMass, UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -50,6 +50,29 @@ def _last_wake(t: BabyTracker) -> datetime | None:
 
 def _measured_attrs(measurement: dict[str, Any] | None) -> dict[str, Any]:
     return {"measured": measurement["date"].isoformat() if measurement else None}
+
+
+def _next_dose(t: BabyTracker) -> datetime | None:
+    due = t.next_dose()
+    return dt_util.parse_datetime(due["next_dose"]) if due else None
+
+
+def _next_dose_attrs(t: BabyTracker) -> dict[str, Any]:
+    due = t.next_dose()
+    return {
+        "treatment": due["label"] if due else None,
+        "treatment_id": due["id"] if due else None,
+        "last_dose": due["last_dose"] if due else None,
+        "treatments": [
+            {"name": tr["label"], "treatment_id": tr["id"], "next_dose": tr["next_dose"]}
+            for tr in t.active_treatments()
+        ],
+    }
+
+
+def _temperature_attrs(t: BabyTracker) -> dict[str, Any]:
+    event = t.latest_temperature()
+    return {"measured": event.start.isoformat() if event else None}
 
 
 def _summary_attrs(summary: dict[str, Any]) -> dict[str, Any]:
@@ -184,10 +207,28 @@ SENSORS: tuple[BabySensorDescription, ...] = (
         value_fn=lambda t: g["length_cm"] if (g := t.latest_growth("length_cm")) else None,
         attrs_fn=lambda t: _measured_attrs(t.latest_growth("length_cm")),
     ),
+    # Medicine & care: when the next dose of a treatment is due, and the latest temperature.
+    BabySensorDescription(
+        key="next_dose",
+        translation_key="next_dose",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_next_dose,
+        attrs_fn=_next_dose_attrs,
+    ),
+    BabySensorDescription(
+        key="temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=1,
+        value_fn=lambda t: e.value if (e := t.latest_temperature()) else None,
+        attrs_fn=_temperature_attrs,
+    ),
 )
 
 # Large attributes that should not be stored in the recorder history.
-UNRECORDED = frozenset({"nights", "days", "sides"})
+UNRECORDED = frozenset({"nights", "days", "sides", "treatments"})
 
 
 async def async_setup_entry(
