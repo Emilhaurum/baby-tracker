@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Card (Danish): the sleep quick button says "barnet" instead of "den", e.g. "Tryk, når
+  barnet vågner".
+
 ## 1.4.1
 
 - Card: the scrolling log and the timeline taps from 1.4.0 are now opt-in, so cards
