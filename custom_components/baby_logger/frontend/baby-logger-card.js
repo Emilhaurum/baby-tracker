@@ -3149,7 +3149,7 @@ class BabyTrackerCard extends HTMLElement {
     ].join("");
     const input = (field, attrs, first = false) =>
       `<input ${first ? 'id="care-first" ' : ""}data-form="care" data-field="${field}" value="${esc(f[field] ?? "")}" ${attrs}>`;
-    const when = `<label>${esc(t("care.when"))} ${input("time", `type="datetime-local" max="${localDateTime(new Date())}"`)}</label>`;
+    const when = `<label class="span">${esc(t("care.when"))} ${input("time", `type="datetime-local" max="${localDateTime(new Date())}"`)}</label>`;
     let fields = "";
     if (mode === "medicine") {
       const recent = (d.care?.recent || []).filter((r) => r.care_type === "medicine");
@@ -3422,6 +3422,7 @@ const STYLE = `
     color: var(--primary-text-color); font: inherit; font-size: 1rem; }
   .care-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.8em; color: var(--secondary-text-color); }
   .care-recent .chip { display: inline-flex; align-items: center; gap: 2px; font-size: 1.15em; }
+  .care-form .care-recent .chip { background: var(--card-background-color); border: 1px solid var(--divider-color); color: var(--primary-text-color); }
   button.icon.tiny { width: 20px; height: 20px; padding: 0; }
   button.icon.tiny ha-icon { --mdc-icon-size: 14px; }
   .treatments { display: grid; gap: 8px; }
