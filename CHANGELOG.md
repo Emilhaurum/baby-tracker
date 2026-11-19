@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 - Medicine & care: a new card part, `care`, for logging medicine, temperatures, notes and
   types of your own (such as Bath, or Pumping in ml) without a permanent button.

@@ -36,7 +36,7 @@
  *   care_trends: [temperature]             care charts also shown in the trends part
  */
 
-const CARD_VERSION = "1.4.1";
+const CARD_VERSION = "1.5.0";
 const DOMAIN = "baby_logger";
 
 const DIAPER = {
