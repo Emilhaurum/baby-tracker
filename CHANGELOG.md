@@ -13,6 +13,8 @@
     `give_dose` and `stop_treatment`, with undo and logbook entries.
   - New sensors *Next dose* (for reminders) and *Temperature* (with long-term statistics).
   - The `units` option now also sets °C or °F for temperatures.
+- Card (Danish): the sleep quick button says "barnet" instead of "den", e.g. "Tryk, når
+  barnet vågner".
 
 ## 1.4.1
 
