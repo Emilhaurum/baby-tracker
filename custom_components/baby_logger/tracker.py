@@ -20,6 +20,12 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     AVERAGE_OVER,
+    CARE_BUILTIN,
+    CARE_MEDICINE,
+    CARE_NOTE,
+    CARE_RECENT_DAYS,
+    CARE_RECENT_MAX,
+    CARE_TEMPERATURE,
     DEFAULT_MERGE_MINUTES,
     DEFAULT_NIGHT_END,
     DEFAULT_NIGHT_START,
@@ -28,14 +34,20 @@ from .const import (
     EVENT_BABY_TRACKER,
     FEEDING_SIDES,
     FUTURE_TOLERANCE,
+    KIND_CARE,
     KIND_DIAPER,
     KIND_FEEDING,
     KIND_SLEEP,
+    MAX_EVERY_HOURS,
     MAX_LENGTH_CM,
     MAX_MERGE_MINUTES,
+    MAX_TEMPERATURE_C,
+    MAX_TREATMENT_DAYS,
     MAX_WEIGHT_KG,
+    MIN_EVERY_HOURS,
     MIN_LENGTH_CM,
     MIN_SLEEP_SECONDS,
+    MIN_TEMPERATURE_C,
     MIN_WEIGHT_KG,
     SIDE_BOTTLE,
     SIDE_LEFT,
@@ -55,7 +67,7 @@ SAVE_DELAY = 1
 
 @dataclass(slots=True)
 class BabyEvent:
-    """A logged diaper change, feeding or finished sleep."""
+    """A logged diaper change, feeding, finished sleep or care entry."""
 
     id: str
     kind: str
@@ -66,6 +78,14 @@ class BabyEvent:
     # Feeding: every side logged during this feeding, in order.
     sides: list[dict[str, Any]] = field(default_factory=list)
     amount_ml: float | None = None
+    # Care: "medicine", "temperature", "note" or the id of a type of the user's own.
+    care_type: str | None = None
+    # Care: what was given / noted (e.g. "Paracetamol 120 mg").
+    text: str | None = None
+    # Care: a number (temperature in °C, or in the unit of the user's type).
+    value: float | None = None
+    # Care: the treatment a dose belongs to.
+    treatment_id: str | None = None
 
     @property
     def side(self) -> str | None:
@@ -86,6 +106,11 @@ class BabyEvent:
             data["sides"] = [{**s, "time": s["time"].isoformat()} for s in self.sides]
             data["side"] = self.side
             data["amount_ml"] = self.amount_ml
+        elif self.kind == KIND_CARE:
+            data["care_type"] = self.care_type
+            data["text"] = self.text
+            data["value"] = self.value
+            data["treatment_id"] = self.treatment_id
         return data
 
     @classmethod
@@ -100,6 +125,10 @@ class BabyEvent:
             diaper_type=data.get("diaper_type"),
             sides=[{**s, "time": _parse(s["time"])} for s in data.get("sides", [])],
             amount_ml=data.get("amount_ml"),
+            care_type=data.get("care_type"),
+            text=data.get("text"),
+            value=data.get("value"),
+            treatment_id=data.get("treatment_id"),
         )
 
 
@@ -136,6 +165,26 @@ def _past_utc(when: datetime | None) -> datetime:
     return min(at, now)
 
 
+def _treatment_as_dict(treatment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **treatment,
+        **{k: treatment[k].isoformat() if treatment[k] else None for k in ("start", "end", "stopped")},
+    }
+
+
+def _treatment_from_dict(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **data,
+        **{k: _parse(data[k]) if data.get(k) else None for k in ("start", "end", "stopped")},
+    }
+
+
+def _care_error(key: str, **placeholders: str) -> ServiceValidationError:
+    return ServiceValidationError(
+        translation_domain=DOMAIN, translation_key=key, translation_placeholders=placeholders or None
+    )
+
+
 @dataclass(slots=True)
 class _Undo:
     action: str
@@ -160,6 +209,10 @@ class BabyTracker:
         self.milestones_done: dict[str, dict[str, Any]] = {}
         # Milestones the user typed: {"id", "name"}.
         self.custom_milestones: list[dict[str, Any]] = []
+        # Care entry types of the user's own: {"id", "name", "emoji", "unit", "deleted"}.
+        self.care_types: list[dict[str, Any]] = []
+        # Treatments: {"id", "name", "dose", "every_hours", "start", "end", "stopped"}.
+        self.treatments: list[dict[str, Any]] = []
         self.sleep_start: datetime | None = None
         self.last_wake: datetime | None = None
         self.merge_minutes: int = DEFAULT_MERGE_MINUTES
@@ -194,6 +247,8 @@ class BabyTracker:
                 for key, done in data.get("milestones", {}).items()
             }
             self.custom_milestones = list(data.get("custom_milestones", []))
+            self.care_types = list(data.get("care_types", []))
+            self.treatments = [_treatment_from_dict(t) for t in data.get("treatments", [])]
             settings = data.get("settings", {})
             self.merge_minutes = int(settings.get("merge_minutes", DEFAULT_MERGE_MINUTES))
             if value := settings.get("night_start"):
@@ -225,6 +280,8 @@ class BabyTracker:
                 key: {**done, "date": done["date"].isoformat()} for key, done in self.milestones_done.items()
             },
             "custom_milestones": self.custom_milestones,
+            "care_types": self.care_types,
+            "treatments": [_treatment_as_dict(t) for t in self.treatments],
             "sleep_start": self.sleep_start.isoformat() if self.sleep_start else None,
             "last_wake": self.last_wake.isoformat() if self.last_wake else None,
             "settings": {
@@ -792,6 +849,281 @@ class BabyTracker:
         ]
         return builtin + custom
 
+    # ------------------------------------------------------------------- care
+
+    def care_type(self, type_ref: str) -> dict[str, Any]:
+        """Return a type of the user's own by id or (case-insensitive) name."""
+        ref = type_ref.strip().casefold()
+        for item in self.care_types:
+            if item["id"] == type_ref or (not item.get("deleted") and item["name"].casefold() == ref):
+                return item
+        raise _care_error("care_type_not_found", type=type_ref)
+
+    def care_label(self, event: BabyEvent) -> str:
+        """Return the name of a care entry's type ("" for the built-in types)."""
+        if event.care_type in CARE_BUILTIN or not event.care_type:
+            return ""
+        item = next((c for c in self.care_types if c["id"] == event.care_type), None)
+        return item["name"] if item else ""
+
+    @callback
+    def async_log_entry(
+        self,
+        care_type: str,
+        text: str | None = None,
+        value: float | None = None,
+        when: datetime | None = None,
+        treatment_id: str | None = None,
+    ) -> BabyEvent:
+        """Log medicine, a temperature (°C), a note or an entry of the user's own type."""
+        text = (text or "").strip()[:200] or None
+        if care_type.strip().casefold() in CARE_BUILTIN:
+            care_type = care_type.strip().casefold()
+        if care_type in (CARE_MEDICINE, CARE_NOTE):
+            if not text:
+                raise _care_error("care_text_required")
+            value = None
+        elif care_type == CARE_TEMPERATURE:
+            if value is None:
+                raise _care_error("temperature_required")
+            if not MIN_TEMPERATURE_C <= value <= MAX_TEMPERATURE_C:
+                raise _care_error(
+                    "temperature_out_of_range", min=f"{MIN_TEMPERATURE_C:g}", max=f"{MAX_TEMPERATURE_C:g}"
+                )
+            value = round(value, 2)
+        else:
+            item = self.care_type(care_type)
+            if item.get("deleted"):
+                raise _care_error("care_type_not_found", type=care_type)
+            care_type = item["id"]
+            if value is not None:
+                value = round(value, 3)
+        event = BabyEvent(
+            id=uuid.uuid4().hex,
+            kind=KIND_CARE,
+            start=_past_utc(when),
+            care_type=care_type,
+            text=text,
+            value=value,
+            treatment_id=treatment_id,
+        )
+        self._insert(event)
+        self._set_undo("dose" if treatment_id else "care", lambda: self._remove(event.id))
+        self._changed(
+            "dose" if treatment_id else "care",
+            {
+                "event_id": event.id,
+                "care_type": care_type,
+                "type_name": self.care_label(event),
+                "emoji": self._care_emoji(care_type),
+                "text": text,
+                "value": value,
+                "unit": self._care_unit(care_type),
+                "treatment_id": treatment_id,
+                "time": event.start.isoformat(),
+            },
+        )
+        return event
+
+    def _care_emoji(self, care_type: str) -> str:
+        builtin = {CARE_MEDICINE: "💊", CARE_TEMPERATURE: "🌡️", CARE_NOTE: "📝"}
+        if care_type in builtin:
+            return builtin[care_type]
+        item = next((c for c in self.care_types if c["id"] == care_type), None)
+        return (item or {}).get("emoji") or "⭐"
+
+    def _care_unit(self, care_type: str) -> str | None:
+        if care_type == CARE_TEMPERATURE:
+            return "°C"
+        item = next((c for c in self.care_types if c["id"] == care_type), None)
+        return (item or {}).get("unit")
+
+    @callback
+    def async_add_care_type(self, name: str, emoji: str | None = None, unit: str | None = None) -> str:
+        """Add a type of entry of the user's own (e.g. Bath, or Pumping in ml)."""
+        name = name.strip()[:50]
+        if not name:
+            raise _care_error("care_name_empty")
+        if name.casefold() in CARE_BUILTIN or any(
+            not c.get("deleted") and c["name"].casefold() == name.casefold() for c in self.care_types
+        ):
+            raise _care_error("care_type_exists", type=name)
+        type_id = f"type_{uuid.uuid4().hex[:12]}"
+        item = {
+            "id": type_id,
+            "name": name,
+            "emoji": (emoji or "").strip()[:8] or "⭐",
+            "unit": (unit or "").strip()[:12] or None,
+            "deleted": False,
+        }
+        self.care_types = [*self.care_types, item]
+
+        def restore() -> None:
+            self.care_types = [c for c in self.care_types if c["id"] != type_id]
+
+        self._set_undo("add_care_type", restore)
+        self._changed("add_care_type", {"care_type": type_id, "type_name": name})
+        return type_id
+
+    @callback
+    def async_delete_care_type(self, type_ref: str) -> None:
+        """Remove a type of the user's own from the choices (its entries are kept)."""
+        item = self.care_type(type_ref)
+        if item.get("deleted"):
+            return
+        index = self.care_types.index(item)
+        self.care_types[index] = {**item, "deleted": True}
+
+        def restore() -> None:
+            self.care_types = [c if c["id"] != item["id"] else item for c in self.care_types]
+
+        self._set_undo("delete_care_type", restore)
+        self._changed("delete_care_type", {"care_type": item["id"], "type_name": item["name"]})
+
+    def get_treatment(self, treatment_id: str) -> dict[str, Any]:
+        """Return a treatment by id."""
+        treatment = next((t for t in self.treatments if t["id"] == treatment_id), None)
+        if treatment is None:
+            raise _care_error("treatment_not_found", treatment=treatment_id)
+        return treatment
+
+    @callback
+    def async_add_treatment(
+        self,
+        name: str,
+        dose: str | None = None,
+        every_hours: float | None = None,
+        days: int | None = None,
+        start: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Start a treatment: a medicine given every few hours, for some days or until stopped."""
+        name = name.strip()[:100]
+        if not name:
+            raise _care_error("care_name_empty")
+        if every_hours is not None and not MIN_EVERY_HOURS <= every_hours <= MAX_EVERY_HOURS:
+            raise _care_error(
+                "every_hours_out_of_range", min=f"{MIN_EVERY_HOURS:g}", max=f"{MAX_EVERY_HOURS:g}"
+            )
+        if days is not None and not 1 <= days <= MAX_TREATMENT_DAYS:
+            raise _care_error("days_out_of_range", max=str(MAX_TREATMENT_DAYS))
+        begins = _as_utc(start).replace(second=0, microsecond=0)
+        treatment = {
+            "id": f"tr_{uuid.uuid4().hex[:12]}",
+            "name": name,
+            "dose": (dose or "").strip()[:50] or None,
+            "every_hours": every_hours,
+            "start": begins,
+            "end": begins + timedelta(days=days) if days else None,
+            "stopped": None,
+        }
+        self.treatments = [*self.treatments, treatment]
+
+        def restore() -> None:
+            self.treatments = [t for t in self.treatments if t["id"] != treatment["id"]]
+
+        self._set_undo("add_treatment", restore)
+        self._changed(
+            "add_treatment", {"treatment_id": treatment["id"], "treatment_name": self._dose_text(treatment)}
+        )
+        return treatment
+
+    @staticmethod
+    def _dose_text(treatment: dict[str, Any]) -> str:
+        return " ".join(filter(None, (treatment["name"], treatment["dose"])))
+
+    @callback
+    def async_give_dose(self, treatment_id: str, when: datetime | None = None) -> BabyEvent:
+        """Log a dose of a treatment."""
+        treatment = self.get_treatment(treatment_id)
+        return self.async_log_entry(
+            CARE_MEDICINE, self._dose_text(treatment), when=when, treatment_id=treatment_id
+        )
+
+    @callback
+    def async_stop_treatment(self, treatment_id: str) -> None:
+        """End a treatment now."""
+        treatment = self.get_treatment(treatment_id)
+        if not self._treatment_active(treatment, dt_util.utcnow()):
+            return
+        index = self.treatments.index(treatment)
+        self.treatments[index] = {**treatment, "stopped": dt_util.utcnow()}
+
+        def restore() -> None:
+            self.treatments = [t if t["id"] != treatment_id else treatment for t in self.treatments]
+
+        self._set_undo("stop_treatment", restore)
+        self._changed(
+            "stop_treatment", {"treatment_id": treatment_id, "treatment_name": self._dose_text(treatment)}
+        )
+
+    @staticmethod
+    def _treatment_active(treatment: dict[str, Any], now: datetime) -> bool:
+        return treatment["stopped"] is None and (treatment["end"] is None or treatment["end"] > now)
+
+    def treatment_state(self, treatment: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
+        """Return a treatment with its doses so far and when the next one is due."""
+        now = now or dt_util.utcnow()
+        doses = [e for e in self.events if e.kind == KIND_CARE and e.treatment_id == treatment["id"]]
+        last = doses[-1].start if doses else None
+        next_dose = None
+        if treatment["every_hours"]:
+            next_dose = last + timedelta(hours=treatment["every_hours"]) if last else treatment["start"]
+            if treatment["end"] is not None and next_dose >= treatment["end"]:
+                next_dose = None
+        midnight = dt_util.start_of_local_day()
+        return {
+            **_treatment_as_dict(treatment),
+            "label": self._dose_text(treatment),
+            "doses": len(doses),
+            "doses_today": sum(1 for e in doses if e.start >= midnight),
+            "last_dose": last.isoformat() if last else None,
+            "next_dose": next_dose.isoformat() if next_dose else None,
+        }
+
+    def active_treatments(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        """Return the treatments that haven't ended, with their state."""
+        now = now or dt_util.utcnow()
+        return [self.treatment_state(t, now) for t in self.treatments if self._treatment_active(t, now)]
+
+    def next_dose(self) -> dict[str, Any] | None:
+        """Return the active treatment whose next dose is due first."""
+        due = [t for t in self.active_treatments() if t["next_dose"]]
+        return min(due, key=lambda t: t["next_dose"]) if due else None
+
+    def latest_temperature(self) -> BabyEvent | None:
+        """Return the latest temperature entry."""
+        return next(
+            (e for e in reversed(self.events) if e.kind == KIND_CARE and e.care_type == CARE_TEMPERATURE),
+            None,
+        )
+
+    def care_recent(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        """Return distinct recent medicine / own-type entries to suggest, newest first."""
+        since = (now or dt_util.utcnow()) - timedelta(days=CARE_RECENT_DAYS)
+        seen: set[tuple[str, str]] = set()
+        recent: list[dict[str, Any]] = []
+        for event in reversed(self.events):
+            if event.start < since:
+                break
+            if event.kind != KIND_CARE or not event.text or event.care_type in (CARE_TEMPERATURE, CARE_NOTE):
+                continue
+            key = (event.care_type or "", event.text.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            recent.append({"care_type": event.care_type, "text": event.text})
+            if len(recent) >= CARE_RECENT_MAX:
+                break
+        return recent
+
+    def care_snapshot(self) -> dict[str, Any]:
+        """Return what the card's care part needs."""
+        return {
+            "types": self.care_types,
+            "treatments": self.active_treatments(),
+            "recent": self.care_recent(),
+        }
+
     # ----------------------------------------------------------------- values
 
     def events_between(self, start: datetime, end: datetime) -> list[BabyEvent]:
@@ -938,11 +1270,12 @@ class BabyTracker:
             "last_night": self.last_night_summary(),
             "daytime": self.daytime_summary(),
             "events": [e.as_dict() for e in self.events_between(since, now)],
+            "care": self.care_snapshot(),
         }
 
     def diagnostics(self) -> dict[str, Any]:
         """Return non-personal debugging information."""
-        counts = dict.fromkeys((KIND_DIAPER, KIND_FEEDING, KIND_SLEEP), 0)
+        counts = dict.fromkeys((KIND_DIAPER, KIND_FEEDING, KIND_SLEEP, KIND_CARE), 0)
         for event in self.events:
             counts[event.kind] = counts.get(event.kind, 0) + 1
         return {
@@ -954,5 +1287,8 @@ class BabyTracker:
             "growth_measurements": len(self.growth),
             "milestones_reached": len(self.milestones_done),
             "custom_milestones": len(self.custom_milestones),
+            "care_types": len(self.care_types),
+            "treatments": len(self.treatments),
+            "active_treatments": len(self.active_treatments()),
             "settings": self._data_to_save()["settings"],
         }

@@ -145,3 +145,101 @@ delete_milestone:
   fields:
     config_entry_id: *entry
     milestone: *milestone
+
+log_entry:
+  fields:
+    config_entry_id: *entry
+    type:
+      required: true
+      default: medicine
+      selector:
+        select:
+          translation_key: care_type
+          custom_value: true
+          options:
+            - medicine
+            - temperature
+            - note
+    text:
+      selector:
+        text:
+    value:
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 0.1
+          mode: box
+    units:
+      default: metric
+      selector:
+        select:
+          translation_key: temperature_units
+          options:
+            - metric
+            - imperial
+    time: *time
+
+add_care_type:
+  fields:
+    config_entry_id: *entry
+    name:
+      required: true
+      selector:
+        text:
+    emoji:
+      selector:
+        text:
+    unit:
+      selector:
+        text:
+
+delete_care_type:
+  fields:
+    config_entry_id: *entry
+    care_type:
+      required: true
+      selector:
+        text:
+
+add_treatment:
+  fields:
+    config_entry_id: *entry
+    name:
+      required: true
+      selector:
+        text:
+    dose:
+      selector:
+        text:
+    every_hours:
+      selector:
+        number:
+          min: 0.5
+          max: 168
+          step: 0.5
+          unit_of_measurement: h
+          mode: box
+    days:
+      selector:
+        number:
+          min: 1
+          max: 366
+          mode: box
+    start:
+      selector:
+        datetime:
+
+give_dose:
+  fields:
+    config_entry_id: *entry
+    treatment_id: &treatment
+      required: true
+      selector:
+        text:
+    time: *time
+
+stop_treatment:
+  fields:
+    config_entry_id: *entry
+    treatment_id: *treatment

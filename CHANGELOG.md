@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Medicine & care: a new card part, `care`, for logging medicine, temperatures, notes and
+  types of your own (such as Bath, or Pumping in ml) without a permanent button.
+  - Treatments: a medicine given every few hours for some days (or until stopped) gets a
+    tile with a **Give** button, the last dose, when the next one is due (orange when due)
+    and which day it is. It disappears when the treatment ends.
+  - Charts of temperatures (with the fever range and the doses marked), doses per day and
+    your own types, in the part (`care_charts`) and optionally in the trends (`care_trends`).
+  - New actions `log_entry`, `add_care_type`, `delete_care_type`, `add_treatment`,
+    `give_dose` and `stop_treatment`, with undo and logbook entries.
+  - New sensors *Next dose* (for reminders) and *Temperature* (with long-term statistics).
+  - The `units` option now also sets °C or °F for temperatures.
+
 ## 1.4.1
 
 - Card: the scrolling log and the timeline taps from 1.4.0 are now opt-in, so cards

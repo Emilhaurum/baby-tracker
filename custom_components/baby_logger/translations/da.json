@@ -241,6 +241,31 @@
             "name": "Målt"
           }
         }
+      },
+      "next_dose": {
+        "name": "Næste dosis",
+        "state_attributes": {
+          "treatment": {
+            "name": "Behandling"
+          },
+          "treatment_id": {
+            "name": "Behandlings-ID"
+          },
+          "last_dose": {
+            "name": "Seneste dosis"
+          },
+          "treatments": {
+            "name": "Behandlinger"
+          }
+        }
+      },
+      "temperature": {
+        "name": "Temperatur",
+        "state_attributes": {
+          "measured": {
+            "name": "Målt"
+          }
+        }
       }
     },
     "switch": {
@@ -322,6 +347,33 @@
     },
     "date_before_birth": {
       "message": "Datoen kan ikke ligge før fødselsdatoen ({birth_date})."
+    },
+    "care_text_required": {
+      "message": "Skriv, hvad der blev givet eller noteret."
+    },
+    "temperature_required": {
+      "message": "Indtast temperaturen."
+    },
+    "temperature_out_of_range": {
+      "message": "Temperaturen skal være mellem {min} og {max} °C."
+    },
+    "care_type_not_found": {
+      "message": "Ukendt type: {type}."
+    },
+    "care_type_exists": {
+      "message": "Der findes allerede en type, der hedder {type}."
+    },
+    "care_name_empty": {
+      "message": "Indtast et navn."
+    },
+    "treatment_not_found": {
+      "message": "Der blev ikke fundet nogen behandling med ID {treatment}."
+    },
+    "every_hours_out_of_range": {
+      "message": "Tiden mellem doserne skal være mellem {min} og {max} timer."
+    },
+    "days_out_of_range": {
+      "message": "En behandling kan vare fra 1 til {max} dage."
     }
   },
   "selector": {
@@ -343,6 +395,19 @@
       "options": {
         "metric": "Metrisk (kg, cm)",
         "imperial": "Imperial (lb, in)"
+      }
+    },
+    "care_type": {
+      "options": {
+        "medicine": "Medicin",
+        "temperature": "Temperatur",
+        "note": "Note"
+      }
+    },
+    "temperature_units": {
+      "options": {
+        "metric": "Celsius (°C)",
+        "imperial": "Fahrenheit (°F)"
       }
     }
   },
@@ -570,6 +635,134 @@
         "milestone": {
           "name": "Milepæl",
           "description": "ID'et på den milepæl, du har tilføjet."
+        }
+      }
+    },
+    "log_entry": {
+      "name": "Registrer post",
+      "description": "Registrerer medicin, en temperatur, en note eller en post af en type, du selv har tilføjet.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Barnet, der registreres for."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Medicin, temperatur, note eller navnet eller ID'et på en type, du har tilføjet."
+        },
+        "text": {
+          "name": "Tekst",
+          "description": "Hvad der blev givet eller noteret, f.eks. Panodil 120 mg. Kræves for medicin og noter."
+        },
+        "value": {
+          "name": "Værdi",
+          "description": "Temperaturen eller et tal i enheden for din egen type (f.eks. ml)."
+        },
+        "units": {
+          "name": "Temperaturenhed",
+          "description": "Enheden for en temperatur."
+        },
+        "time": {
+          "name": "Tidspunkt",
+          "description": "Hvornår det skete. Som standard nu."
+        }
+      }
+    },
+    "add_care_type": {
+      "name": "Tilføj type",
+      "description": "Tilføjer en type af dine egne, f.eks. Bad eller Udpumpning i ml.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Barnet, der registreres for."
+        },
+        "name": {
+          "name": "Navn",
+          "description": "Typens navn, f.eks. Bad."
+        },
+        "emoji": {
+          "name": "Emoji",
+          "description": "Vises i loggen, f.eks. 🛁."
+        },
+        "unit": {
+          "name": "Enhed",
+          "description": "Valgfri enhed for et tal, der registreres med hver post, f.eks. ml. Poster med et tal vises som en kurve."
+        }
+      }
+    },
+    "delete_care_type": {
+      "name": "Slet type",
+      "description": "Fjerner en type, du har tilføjet, fra valgmulighederne. Poster, der allerede er registreret, bevares.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Barnet, der registreres for."
+        },
+        "care_type": {
+          "name": "Type",
+          "description": "Typens navn eller ID."
+        }
+      }
+    },
+    "add_treatment": {
+      "name": "Tilføj behandling",
+      "description": "Starter en behandling: en medicin, der gives med nogle timers mellemrum, i et antal dage eller indtil den stoppes.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Barnet, der registreres for."
+        },
+        "name": {
+          "name": "Medicin",
+          "description": "F.eks. Panodil."
+        },
+        "dose": {
+          "name": "Dosis",
+          "description": "F.eks. 120 mg."
+        },
+        "every_hours": {
+          "name": "Hver",
+          "description": "Timer mellem doserne. Lad feltet være tomt for medicin, der gives efter behov."
+        },
+        "days": {
+          "name": "Dage",
+          "description": "Hvor mange dage. Lad feltet være tomt for at give den, indtil den stoppes."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Hvornår behandlingen starter. Som standard nu."
+        }
+      }
+    },
+    "give_dose": {
+      "name": "Giv dosis",
+      "description": "Registrerer en dosis af en behandling.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Barnet, der registreres for."
+        },
+        "treatment_id": {
+          "name": "Behandling",
+          "description": "Behandlingens ID."
+        },
+        "time": {
+          "name": "Tidspunkt",
+          "description": "Hvornår den blev givet. Som standard nu."
+        }
+      }
+    },
+    "stop_treatment": {
+      "name": "Stop behandling",
+      "description": "Afslutter en behandling nu.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Barnet, der registreres for."
+        },
+        "treatment_id": {
+          "name": "Behandling",
+          "description": "Behandlingens ID."
         }
       }
     }

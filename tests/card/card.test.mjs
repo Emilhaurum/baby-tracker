@@ -923,3 +923,167 @@ test("a rebuilt card keeps the page where it was", async () => {
   assert.equal(await page.evaluate(() => window.scrollY), before);
   await context.close();
 });
+
+// ------------------------------------------------------------------ medicine & care
+
+function careSnap(extra = {}) {
+  const base = snapshot();
+  const dayIso = (daysAgo, time) => {
+    const d = new Date("2026-05-05T12:00:00+02:00");
+    d.setDate(d.getDate() - daysAgo);
+    return iso(time, d.toISOString().slice(0, 10));
+  };
+  const care = [
+    { id: "t1", kind: "care", start: dayIso(3, "19:00"), end: null, care_type: "temperature", text: null, value: 38.6, treatment_id: null },
+    { id: "m1", kind: "care", start: dayIso(3, "19:10"), end: null, care_type: "medicine", text: "Paracetamol 120 mg", value: null, treatment_id: "tr1" },
+    { id: "t2", kind: "care", start: dayIso(2, "08:00"), end: null, care_type: "temperature", text: null, value: 38.1, treatment_id: null },
+    { id: "m2", kind: "care", start: dayIso(2, "08:15"), end: null, care_type: "medicine", text: "Paracetamol 120 mg", value: null, treatment_id: "tr1" },
+    { id: "t3", kind: "care", start: dayIso(1, "09:00"), end: null, care_type: "temperature", text: null, value: 37.4, treatment_id: null },
+    { id: "b1", kind: "care", start: iso("09:30"), end: null, care_type: "type_bath", text: null, value: null, treatment_id: null },
+    { id: "m3", kind: "care", start: iso("08:10"), end: null, care_type: "medicine", text: "Paracetamol 120 mg", value: null, treatment_id: "tr1" },
+  ];
+  return snapshot({
+    events: [...base.events, ...care],
+    care: {
+      types: [{ id: "type_bath", name: "Bath", emoji: "🛁", unit: null, deleted: false }],
+      treatments: [
+        {
+          id: "tr1", name: "Paracetamol", dose: "120 mg", label: "Paracetamol 120 mg", every_hours: 6,
+          start: dayIso(3, "19:00"), end: dayIso(-2, "19:00"), stopped: null,
+          doses: 3, doses_today: 1, last_dose: iso("08:10"), next_dose: iso("14:10"),
+        },
+        {
+          id: "tr2", name: "Nose drops", dose: null, label: "Nose drops", every_hours: null,
+          start: dayIso(1, "10:00"), end: null, stopped: null, doses: 0, doses_today: 0, last_dose: null, next_dose: null,
+        },
+      ],
+      recent: [{ care_type: "medicine", text: "Paracetamol 120 mg" }, { care_type: "medicine", text: "Vitamin D 10 µg" }],
+    },
+    ...extra,
+  });
+}
+
+test("care: treatments, charts and entries in the log", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["care", "log"] }, snap: careSnap() });
+  const card = page.locator("baby-logger-card");
+  const tiles = card.locator(".treatment");
+  assert.equal(await tiles.count(), 2);
+  // The next dose was due at 14:10 (it's 15:00): highlighted.
+  assert.ok(await tiles.first().evaluate((el) => el.classList.contains("due")));
+  assert.equal(await tiles.first().locator(".tr-meta").textContent(), "Every 6 h · last 08:10 AM · due since 02:10 PM · day 3 of 5");
+  assert.equal(await tiles.nth(1).locator(".tr-meta").textContent(), "As needed · not given yet");
+  assert.equal(await tiles.first().locator(".tr-progress").count(), 1);
+  assert.equal(await tiles.nth(1).locator(".tr-progress").count(), 0);
+  // Default charts: temperature (a line, with the fever band and doses marked) and medicine per day.
+  assert.deepEqual(await card.locator(".care-part .chart-title").allTextContents(), ["Temperature (°C)", "Medicine · per day"]);
+  assert.equal(await card.locator(".care-part svg.care-chart circle.point").count(), 3);
+  assert.equal(await card.locator(".care-part svg.care-chart path.marker").count(), 3);
+  assert.equal(await card.locator(".care-part svg.care-chart rect.band").count(), 1);
+  // The log shows care entries with their type.
+  const texts = await card.locator("ul.log li:not(.day) .text").allTextContents();
+  assert.ok(texts.includes("Paracetamol 120 mg"));
+  assert.ok(texts.includes("Bath"));
+  await shot(page, "care");
+  // Give a dose, stop a treatment.
+  await tiles.first().locator('[data-action="care-dose"]').click();
+  page.once("dialog", (d) => d.accept());
+  await tiles.nth(1).locator('[data-action="care-stop"]').click();
+  const calls = await page.evaluate(() => window.hass.calls.map((c) => [c.service, c.data]));
+  assert.deepEqual(calls, [
+    ["give_dose", { config_entry_id: "e1", treatment_id: "tr1" }],
+    ["stop_treatment", { config_entry_id: "e1", treatment_id: "tr2" }],
+  ]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("care: adding entries, treatments and types", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["care"], units: "imperial" }, snap: careSnap() });
+  const card = page.locator("baby-logger-card");
+  const lastCall = () => page.evaluate(() => window.hass.calls.at(-1));
+  await card.locator('[data-action="care-open"]').click();
+  // Medicine: a recent entry fills the text.
+  await card.locator('[data-action="care-recent"]', { hasText: "Vitamin D" }).click();
+  assert.equal(await card.locator("#care-first").inputValue(), "Vitamin D 10 µg");
+  await shot(page, "care-add");
+  await card.locator('[data-action="care-save"]').click();
+  assert.deepEqual(await lastCall(), { domain: "baby_logger", service: "log_entry", data: { config_entry_id: "e1", type: "medicine", text: "Vitamin D 10 µg" } });
+  assert.equal(await card.locator(".care-form").count(), 0);
+  // Temperature in °F (the card's units), typed and saved with Enter; the form survives an update.
+  await card.locator('[data-action="care-open"]').click();
+  await card.locator('[data-action="care-mode"][data-value="temperature"]').click();
+  assert.match(await card.locator(".care-form label").first().textContent(), /°F/);
+  await card.locator("#care-first").fill("101.3");
+  await page.evaluate((snap) => window.hass.push(snap), careSnap());
+  await page.waitForTimeout(30);
+  assert.equal(await card.locator("#care-first").inputValue(), "101.3");
+  await card.locator("#care-first").press("Enter");
+  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", type: "temperature", value: 101.3, units: "imperial" });
+  // Nothing typed: nothing is called.
+  await card.locator('[data-action="care-open"]').click();
+  const before = await page.evaluate(() => window.hass.calls.length);
+  await card.locator('[data-action="care-mode"][data-value="note"]').click();
+  await card.locator('[data-action="care-save"]').click();
+  assert.equal(await page.evaluate(() => window.hass.calls.length), before);
+  // With a time.
+  await card.locator("#care-first").fill("Doctor");
+  await card.locator('input[data-field="time"]').fill("2026-05-05T10:30");
+  await card.locator('[data-action="care-save"]').click();
+  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", type: "note", text: "Doctor", time: iso("10:30") });
+  // A type of the user's own.
+  await card.locator('[data-action="care-open"]').click();
+  await card.locator('[data-action="care-mode"][data-value="type_bath"]').click();
+  await card.locator('[data-action="care-save"]').click();
+  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", type: "type_bath" });
+  // A treatment.
+  await card.locator('[data-action="care-open"]').click();
+  await card.locator('[data-action="care-mode"][data-value="treatment"]').click();
+  await card.locator("#care-first").fill("Antibiotic");
+  await card.locator('input[data-field="dose"]').fill("2.5 ml");
+  await card.locator('select[data-field="every"]').selectOption("8");
+  await card.locator('input[data-field="days"]').fill("7");
+  await card.locator('[data-action="care-save"]').click();
+  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", name: "Antibiotic", dose: "2.5 ml", every_hours: 8, days: 7 });
+  // A new type, and removing one.
+  await card.locator('[data-action="care-open"]').click();
+  await card.locator('[data-action="care-mode"][data-value="newtype"]').click();
+  await card.locator("#care-first").fill("Pumping");
+  await card.locator('input[data-field="unit"]').fill("ml");
+  await card.locator('[data-action="care-save"]').click();
+  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", name: "Pumping", unit: "ml" });
+  await card.locator('[data-action="care-open"]').click();
+  await card.locator('[data-action="care-mode"][data-value="newtype"]').click();
+  page.once("dialog", (d) => d.accept());
+  await card.locator('[data-action="care-type-delete"]').click();
+  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", care_type: "type_bath" });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("care: chosen charts, trends and Danish", async () => {
+  const config = { parts: ["care", "trends"], care_charts: "temperatur, bath, paracetamol, none", care_trends: ["temperature"] };
+  const { page, context, errors } = await mount({ config, snap: careSnap(), language: "da" });
+  const card = page.locator("baby-logger-card");
+  assert.deepEqual(await card.locator(".care-part .chart-title").allTextContents(), ["Temperatur (°C)", "🛁 Bath · pr. dag", "paracetamol · pr. dag"]);
+  assert.match(await card.locator(".treatment").first().locator(".tr-meta").textContent(), /^Hver 6\. time · seneste 08\.10 · skulle gives 14\.10 · dag 3 af 5$/);
+  // The temperature chart also in the trends part.
+  const trendTitles = await card.locator(".section:not(.care-part) .chart-title").allTextContents();
+  assert.equal(trendTitles.at(-1), "Temperatur (°C)");
+  assert.equal(await card.locator('[data-action="care-open"]').textContent(), "Tilføj");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("care: empty part and cards without it", async () => {
+  let { page, context } = await mount({ config: { parts: ["care"] }, snap: snapshot({ care: { types: [], treatments: [], recent: [] } }) });
+  assert.match(await page.locator("baby-logger-card .care-part .message").textContent(), /No treatments right now/);
+  await context.close();
+  // Without care data at all (an older integration) the part still renders.
+  ({ page, context } = await mount({ config: { parts: ["care"] } }));
+  assert.equal(await page.locator("baby-logger-card .care-part").count(), 1);
+  await context.close();
+  // Not shown unless chosen.
+  ({ page, context } = await mount({ snap: careSnap() }));
+  assert.equal(await page.locator("baby-logger-card .care-part").count(), 0);
+  await context.close();
+});
