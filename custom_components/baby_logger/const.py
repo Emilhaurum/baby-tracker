@@ -14,7 +14,24 @@ STORAGE_KEY_PREFIX: Final = DOMAIN
 KIND_DIAPER: Final = "diaper"
 KIND_FEEDING: Final = "feeding"
 KIND_SLEEP: Final = "sleep"
-KINDS: Final = (KIND_DIAPER, KIND_FEEDING, KIND_SLEEP)
+# Medicine, temperature, notes and the user's own types ("Medicine & care").
+KIND_CARE: Final = "care"
+KINDS: Final = (KIND_DIAPER, KIND_FEEDING, KIND_SLEEP, KIND_CARE)
+
+CARE_MEDICINE: Final = "medicine"
+CARE_TEMPERATURE: Final = "temperature"
+CARE_NOTE: Final = "note"
+CARE_BUILTIN: Final = (CARE_MEDICINE, CARE_TEMPERATURE, CARE_NOTE)
+# Plausible body temperatures (stored in °C).
+MIN_TEMPERATURE_C: Final = 30.0
+MAX_TEMPERATURE_C: Final = 45.0
+# Treatments: dose interval and length limits.
+MIN_EVERY_HOURS: Final = 0.5
+MAX_EVERY_HOURS: Final = 168.0
+MAX_TREATMENT_DAYS: Final = 366
+# Suggestions offered when adding an entry: distinct recent entries.
+CARE_RECENT_DAYS: Final = 60
+CARE_RECENT_MAX: Final = 8
 
 DIAPER_WET: Final = "wet"
 DIAPER_DIRTY: Final = "dirty"
@@ -80,6 +97,15 @@ ATTR_LENGTH: Final = "length"
 ATTR_UNITS: Final = "units"
 ATTR_MILESTONE: Final = "milestone"
 ATTR_NAME: Final = "name"
+ATTR_TEXT: Final = "text"
+ATTR_VALUE: Final = "value"
+ATTR_TREATMENT: Final = "treatment_id"
+ATTR_DOSE: Final = "dose"
+ATTR_EVERY_HOURS: Final = "every_hours"
+ATTR_DAYS: Final = "days"
+ATTR_EMOJI: Final = "emoji"
+ATTR_UNIT: Final = "unit"
+ATTR_CARE_TYPE: Final = "care_type"
 
 SERVICE_LOG_DIAPER: Final = "log_diaper"
 SERVICE_LOG_FEEDING: Final = "log_feeding"
@@ -94,6 +120,12 @@ SERVICE_SET_MILESTONE: Final = "set_milestone"
 SERVICE_CLEAR_MILESTONE: Final = "clear_milestone"
 SERVICE_ADD_MILESTONE: Final = "add_milestone"
 SERVICE_DELETE_MILESTONE: Final = "delete_milestone"
+SERVICE_LOG_ENTRY: Final = "log_entry"
+SERVICE_ADD_CARE_TYPE: Final = "add_care_type"
+SERVICE_DELETE_CARE_TYPE: Final = "delete_care_type"
+SERVICE_ADD_TREATMENT: Final = "add_treatment"
+SERVICE_GIVE_DOSE: Final = "give_dose"
+SERVICE_STOP_TREATMENT: Final = "stop_treatment"
 
 FRONTEND_URL_BASE: Final = f"/{DOMAIN}_static"
 CARD_FILENAME: Final = "baby-logger-card.js"

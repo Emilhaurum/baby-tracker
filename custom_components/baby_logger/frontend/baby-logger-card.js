@@ -19,7 +19,7 @@
  *   night_days: 14            nights in the night sleep chart
  *   night_start: "21:00"      optional; defaults to the integration's "Night starts" setting
  *   night_end: "07:00"        optional; defaults to the integration's "Night ends" setting
- *   parts: [header, tiles, buttons, undo, summary, trends, nights, timeline, log, growth, milestones]
+ *   parts: [header, tiles, buttons, undo, summary, trends, nights, timeline, log, growth, milestones, care]
  *                             optional; the parts to show, in order (replaces the show_* flags)
  *   buttons:                  optional; quick buttons for the "buttons" part, in order
  *     - action: sleep         sleep | diaper_wet | diaper_dirty | diaper_both |
@@ -28,10 +28,12 @@
  *       color: indigo         HA colour name or CSS colour
  *       columns: 12           width in a 12-column grid
  *   buttons_columns: 3        default buttons per row
- *   units: metric             metric (kg, cm) or imperial (lb + oz, in) for growth
+ *   units: metric             metric (kg, cm, °C) or imperial (lb + oz, in, °F) for growth and temperature
  *   growth_entries: 5         measurements listed under the growth charts
  *   growth_list: collapsed    the measurement list starts collapsed or expanded
  *   language: auto            auto (the Home Assistant user's language), en or da
+ *   care_charts: [temperature, medicine]   charts in the care part (default: what has entries)
+ *   care_trends: [temperature]             care charts also shown in the trends part
  */
 
 const CARD_VERSION = "1.4.1";
@@ -50,7 +52,7 @@ const SIDES = {
 const SLEEP_COLORS = { night: "#3f51b5", day: "#ffb300" };
 // Names that follow the card's language (see I18N below).
 const UNDO_LABELS = translated(
-  ["diaper", "feeding", "sleep", "wake", "add_sleep", "update_sleep", "delete", "growth", "delete_growth", "milestone", "clear_milestone", "add_milestone", "delete_milestone"],
+  ["diaper", "feeding", "sleep", "wake", "add_sleep", "update_sleep", "delete", "growth", "delete_growth", "milestone", "clear_milestone", "add_milestone", "delete_milestone", "care", "dose", "add_care_type", "delete_care_type", "add_treatment", "stop_treatment"],
   "undo"
 );
 const MILESTONE_CATEGORIES = translated(["movement", "communication", "social", "firsts", "custom"], "category");
@@ -81,7 +83,7 @@ const DEFAULTS = {
 const NIGHTS_MAX = 366;
 
 // Parts of the card that can be shown, in the editor's default order.
-const PARTS = ["header", "tiles", "buttons", "undo", "summary", "trends", "nights", "timeline", "log", "growth", "milestones"];
+const PARTS = ["header", "tiles", "buttons", "undo", "summary", "trends", "nights", "timeline", "log", "growth", "milestones", "care"];
 const PART_LABELS = translated(PARTS, "part");
 // Parts that need the sleep history.
 const SLEEP_PARTS = ["nights", "timeline"];
@@ -174,6 +176,12 @@ export const I18N = {
     "undo.clear_milestone": "Milestone cleared",
     "undo.add_milestone": "Milestone added",
     "undo.delete_milestone": "Milestone deleted",
+    "undo.care": "Entry logged",
+    "undo.dose": "Dose logged",
+    "undo.add_care_type": "Type added",
+    "undo.delete_care_type": "Type removed",
+    "undo.add_treatment": "Treatment added",
+    "undo.stop_treatment": "Treatment stopped",
     "undo.saved": "Saved",
     "category.movement": "Movement",
     "category.communication": "Communication",
@@ -191,6 +199,7 @@ export const I18N = {
     "part.log": "Log",
     "part.growth": "Growth (weight and length)",
     "part.milestones": "Milestones",
+    "part.care": "Medicine & care",
     "button.sleep": "Sleep",
     "button.diaper_wet": "Wet",
     "button.diaper_dirty": "Dirty",
@@ -231,6 +240,7 @@ export const I18N = {
     "log.sleep": "Sleep {duration} ({from}–{to})",
     "log.confirm": "Delete \"{text}\"?",
     "log.this_entry": "this entry",
+    "log.temperature": "Temperature {value}",
     "tile.diaper": "Diaper",
     "tile.feeding": "Feeding",
     "tile.sleeping": "Sleeping",
@@ -296,6 +306,48 @@ export const I18N = {
     "trends.diapers": "Diapers",
     "trends.feedings": "Feedings",
     "trends.sleep": "Sleep (hours)",
+    "care.title": "Medicine & care",
+    "care.add": "Add",
+    "care.medicine": "Medicine",
+    "care.temperature": "Temperature",
+    "care.note": "Note",
+    "care.treatment": "Treatment",
+    "care.new_type": "New type",
+    "care.what": "What was given",
+    "care.medicine_placeholder": "e.g. Paracetamol 120 mg",
+    "care.note_placeholder": "e.g. Vaccination",
+    "care.text_optional": "Note (optional)",
+    "care.value": "Value ({unit})",
+    "care.temp_value": "Temperature ({unit})",
+    "care.when": "When (empty: now)",
+    "care.recent": "Recent:",
+    "care.dose": "Dose",
+    "care.dose_placeholder": "e.g. 120 mg",
+    "care.every": "How often",
+    "care.as_needed": "As needed",
+    "care.every_h": "Every {h} h",
+    "care.days": "Days (empty: until stopped)",
+    "care.type_name": "Name",
+    "care.type_placeholder": "e.g. Bath",
+    "care.emoji": "Emoji",
+    "care.unit": "Unit (optional, e.g. ml)",
+    "care.your_types": "Your types:",
+    "care.type_confirm": "Remove the type {name}? Entries already logged are kept.",
+    "care.give": "Give",
+    "care.stop": "Stop treatment",
+    "care.stop_confirm": "Stop {name}?",
+    "care.last": "last {time}",
+    "care.next": "next {time}",
+    "care.due": "due now",
+    "care.due_since": "due since {time}",
+    "care.not_given": "not given yet",
+    "care.day_of": "day {n} of {total}",
+    "care.starts": "starts {time}",
+    "care.none": "No treatments right now. Use Add to log medicine, a temperature or a note, or to start a treatment.",
+    "care.no_data": "Nothing logged in this period",
+    "care.per_day": "{name} · per day",
+    "care.given": "Medicine given",
+    "care.fever": "Fever ({value})",
     "ed.baby": "Baby",
     "ed.first_baby": "First baby",
     "ed.language": "Language",
@@ -321,9 +373,12 @@ export const I18N = {
     "ed.log_entries": "Log entries",
     "ed.log_visible": "Log entries shown before scrolling (empty: no scrolling)",
     "ed.tl_details": "Tap the timeline to see sleep and awake periods",
-    "ed.units": "Growth units",
-    "ed.metric": "Metric (kg, cm)",
-    "ed.imperial": "Imperial (lb + oz, in)",
+    "ed.care_charts": "Medicine & care charts",
+    "ed.care_trends": "Medicine & care charts in Trends",
+    "ed.care_hint": "Comma-separated: temperature, medicine, the name of a medicine or of a type of your own. Leave the first empty to chart what has entries, or write none.",
+    "ed.units": "Units (growth and temperature)",
+    "ed.metric": "Metric (kg, cm, °C)",
+    "ed.imperial": "Imperial (lb + oz, in, °F)",
     "ed.growth_entries": "Measurements listed under the growth charts",
     "ed.growth_list": "Measurement list",
     "ed.collapsed": "Collapsed",
@@ -371,6 +426,12 @@ export const I18N = {
     "undo.clear_milestone": "Milepæl nulstillet",
     "undo.add_milestone": "Milepæl tilføjet",
     "undo.delete_milestone": "Milepæl slettet",
+    "undo.care": "Post registreret",
+    "undo.dose": "Dosis registreret",
+    "undo.add_care_type": "Type tilføjet",
+    "undo.delete_care_type": "Type fjernet",
+    "undo.add_treatment": "Behandling tilføjet",
+    "undo.stop_treatment": "Behandling stoppet",
     "undo.saved": "Gemt",
     "category.movement": "Bevægelse",
     "category.communication": "Kommunikation",
@@ -388,6 +449,7 @@ export const I18N = {
     "part.log": "Log",
     "part.growth": "Vækst (vægt og længde)",
     "part.milestones": "Milepæle",
+    "part.care": "Medicin & pleje",
     "button.sleep": "Søvn",
     "button.diaper_wet": "Våd",
     "button.diaper_dirty": "Beskidt",
@@ -428,6 +490,7 @@ export const I18N = {
     "log.sleep": "Søvn {duration} ({from}–{to})",
     "log.confirm": "Slet \"{text}\"?",
     "log.this_entry": "denne registrering",
+    "log.temperature": "Temperatur {value}",
     "tile.diaper": "Ble",
     "tile.feeding": "Måltid",
     "tile.sleeping": "Sover",
@@ -493,6 +556,48 @@ export const I18N = {
     "trends.diapers": "Bleer",
     "trends.feedings": "Måltider",
     "trends.sleep": "Søvn (timer)",
+    "care.title": "Medicin & pleje",
+    "care.add": "Tilføj",
+    "care.medicine": "Medicin",
+    "care.temperature": "Temperatur",
+    "care.note": "Note",
+    "care.treatment": "Behandling",
+    "care.new_type": "Ny type",
+    "care.what": "Hvad blev givet",
+    "care.medicine_placeholder": "f.eks. Panodil 120 mg",
+    "care.note_placeholder": "f.eks. Vaccination",
+    "care.text_optional": "Note (valgfri)",
+    "care.value": "Værdi ({unit})",
+    "care.temp_value": "Temperatur ({unit})",
+    "care.when": "Hvornår (tom: nu)",
+    "care.recent": "Seneste:",
+    "care.dose": "Dosis",
+    "care.dose_placeholder": "f.eks. 120 mg",
+    "care.every": "Hvor ofte",
+    "care.as_needed": "Efter behov",
+    "care.every_h": "Hver {h}. time",
+    "care.days": "Dage (tom: indtil den stoppes)",
+    "care.type_name": "Navn",
+    "care.type_placeholder": "f.eks. Bad",
+    "care.emoji": "Emoji",
+    "care.unit": "Enhed (valgfri, f.eks. ml)",
+    "care.your_types": "Dine typer:",
+    "care.type_confirm": "Fjern typen {name}? Poster, der allerede er registreret, bevares.",
+    "care.give": "Giv",
+    "care.stop": "Stop behandling",
+    "care.stop_confirm": "Stop {name}?",
+    "care.last": "seneste {time}",
+    "care.next": "næste {time}",
+    "care.due": "skal gives nu",
+    "care.due_since": "skulle gives {time}",
+    "care.not_given": "ikke givet endnu",
+    "care.day_of": "dag {n} af {total}",
+    "care.starts": "starter {time}",
+    "care.none": "Ingen behandlinger lige nu. Brug Tilføj for at registrere medicin, en temperatur eller en note, eller for at starte en behandling.",
+    "care.no_data": "Intet registreret i perioden",
+    "care.per_day": "{name} · pr. dag",
+    "care.given": "Medicin givet",
+    "care.fever": "Feber ({value})",
     "ed.baby": "Baby",
     "ed.first_baby": "Første baby",
     "ed.language": "Sprog",
@@ -518,9 +623,12 @@ export const I18N = {
     "ed.log_entries": "Linjer i loggen",
     "ed.log_visible": "Linjer vist i loggen, før den ruller (tom: ingen rulning)",
     "ed.tl_details": "Tryk på tidslinjen for at se søvn- og vågenperioder",
-    "ed.units": "Enheder for vækst",
-    "ed.metric": "Metrisk (kg, cm)",
-    "ed.imperial": "Imperial (lb + oz, in)",
+    "ed.care_charts": "Grafer i medicin & pleje",
+    "ed.care_trends": "Grafer fra medicin & pleje i Tendenser",
+    "ed.care_hint": "Adskilt med komma: temperatur, medicin, navnet på en medicin eller på en af dine egne typer. Lad den første være tom for at vise det, der er registreret, eller skriv none.",
+    "ed.units": "Enheder (vækst og temperatur)",
+    "ed.metric": "Metrisk (kg, cm, °C)",
+    "ed.imperial": "Imperial (lb + oz, in, °F)",
     "ed.growth_entries": "Målinger vist under vækstkurverne",
     "ed.growth_list": "Liste over målinger",
     "ed.collapsed": "Foldet sammen",
@@ -1136,6 +1244,12 @@ function parseDay(iso) {
 }
 
 /** Today's (local) date as YYYY-MM-DD. */
+/** "2026-05-05T14:10" (local) for a datetime-local input. */
+export function localDateTime(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function todayIso(now = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -1507,7 +1621,8 @@ function growthChart(points, { byAge, unit, decimals }) {
   return `<svg class="growth-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${svg}</svg>`;
 }
 
-function describe(e) {
+function describe(e, types = [], units = "metric") {
+  if (e.kind === "care") return careEntryText(e, types, units);
   if (e.kind === "diaper") {
     const d = DIAPER[e.diaper_type] || DIAPER.wet;
     return { emoji: d.emoji, text: t("log.diaper", { type: d.label }) };
@@ -1564,6 +1679,193 @@ function stackedBars(buckets, keys, colors, valueFn, { unit = "", decimals = 0, 
   return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${bars}</svg>`;
 }
 
+
+// ------------------------------------------------------------------ medicine & care
+
+const CARE_COLORS = { medicine: "#e0457b", temperature: "#f57c00", note: "#607d8b", own: "#26a69a" };
+const CARE_BUILTIN = { medicine: "💊", temperature: "🌡️", note: "📝" };
+// Danish (and other) words accepted for the built-in chart keys.
+const CARE_ALIASES = { temperatur: "temperature", medicin: "medicine" };
+const FEVER_C = 38;
+
+/** The emoji, name and unit of a care entry type (built-in or of the user's own). */
+export function careTypeInfo(careType, types = []) {
+  if (careType in CARE_BUILTIN) {
+    return { emoji: CARE_BUILTIN[careType], name: t(`care.${careType}`), unit: careType === "temperature" ? "°C" : null, builtin: true };
+  }
+  const own = (types || []).find((x) => x.id === careType);
+  return { emoji: own?.emoji || "⭐", name: own?.name || "", unit: own?.unit || null, builtin: false };
+}
+
+/** "38.4 °C" or "101.1 °F" for a temperature stored in °C. */
+export function formatTemperature(celsius, units) {
+  if (celsius === null || celsius === undefined) return "–";
+  return units === "imperial" ? `${num((celsius * 9) / 5 + 32, 1)} °F` : `${num(celsius, 1)} °C`;
+}
+
+/** The emoji and text of a care entry in the log. */
+export function careEntryText(e, types = [], units = "metric") {
+  const info = careTypeInfo(e.care_type, types);
+  if (e.care_type === "temperature") return { emoji: info.emoji, text: t("log.temperature", { value: formatTemperature(e.value, units) }) };
+  if (info.builtin) return { emoji: info.emoji, text: e.text || info.name };
+  const value = e.value === null || e.value === undefined ? "" : `${localDecimal(Number(e.value))}${info.unit ? ` ${info.unit}` : ""}`;
+  return { emoji: info.emoji, text: [info.name, e.text, value].filter(Boolean).join(" · ") };
+}
+
+/** Chart keys from the card option: a list or a comma-separated text. */
+export function careChartKeys(value) {
+  const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  return list.map((k) => String(k).trim()).filter(Boolean);
+}
+
+/** The charts shown when none are configured: temperature and medicine, when they have entries. */
+export function defaultCareCharts(events) {
+  const care = (events || []).filter((e) => e.kind === "care");
+  return ["temperature", "medicine"].filter((key) => care.some((e) => e.care_type === key));
+}
+
+/**
+ * What a chart key shows: "temperature" (a line), "medicine" (doses per day), a type of
+ * the user's own by name or id (a line when it has a unit, else per day), or else the
+ * medicine entries whose text contains the key (per day). null for "none".
+ */
+export function careChart(key, types = []) {
+  const wanted = CARE_ALIASES[key.toLowerCase()] ?? key.toLowerCase();
+  if (wanted === "none") return null;
+  if (wanted === "temperature") {
+    return { key, kind: "line", label: t("care.temperature"), color: CARE_COLORS.temperature, match: (e) => e.care_type === "temperature", temperature: true };
+  }
+  if (wanted === "medicine") return { key, kind: "bars", label: t("care.medicine"), color: CARE_COLORS.medicine, match: (e) => e.care_type === "medicine" };
+  const own = (types || []).find((x) => x.id === key || x.name.toLowerCase() === wanted);
+  if (own) {
+    const match = (e) => e.care_type === own.id;
+    const label = `${own.emoji || ""} ${own.name}`.trim();
+    return own.unit
+      ? { key, kind: "line", label, unit: own.unit, color: CARE_COLORS.own, match }
+      : { key, kind: "bars", label, color: CARE_COLORS.own, match };
+  }
+  return { key, kind: "bars", label: key, color: CARE_COLORS.medicine, match: (e) => e.care_type === "medicine" && (e.text || "").toLowerCase().includes(wanted) };
+}
+
+/** Matching care entries per day (oldest first) for the last `days` days. */
+export function careDaily(events, match, days, now = new Date()) {
+  const first = startOfDay(now);
+  first.setDate(first.getDate() - (days - 1));
+  const buckets = Array.from({ length: days }, (_, i) => {
+    const start = new Date(first);
+    start.setDate(first.getDate() + i);
+    return { start, n: 0 };
+  });
+  for (const e of events || []) {
+    if (e.kind !== "care" || !match(e)) continue;
+    const day = startOfDay(new Date(e.start));
+    const bucket = buckets.find((b) => b.start.getTime() === day.getTime());
+    if (bucket) bucket.n += 1;
+  }
+  return buckets;
+}
+
+/** A line chart of values over the last `days` days (one tick per day). */
+function careLineChart(points, { days, now, unit, decimals = 1, band = null, markers = [], color }) {
+  if (!points.length) return `<div class="message">${esc(t("care.no_data"))}</div>`;
+  const width = 300;
+  const height = 140;
+  const left = 34;
+  const right = 8;
+  const top = 10;
+  const bottom = 18;
+  const start = startOfDay(now);
+  start.setDate(start.getDate() - (days - 1));
+  const end = new Date(start);
+  end.setDate(start.getDate() + days);
+  const ys = points.map((p) => p.y);
+  let y0 = Math.min(...ys, ...(band ? [band] : []));
+  let y1 = Math.max(...ys, ...(band ? [band] : []));
+  const pad = Math.max((y1 - y0) * 0.15, 0.5);
+  y0 -= pad;
+  y1 += pad;
+  const sx = (d) => left + ((d - start) / (end - start)) * (width - left - right);
+  const sy = (y) => height - bottom - ((y - y0) / (y1 - y0)) * (height - top - bottom);
+  let svg = "";
+  if (band !== null) {
+    svg += `<rect class="band" x="${left}" y="${top}" width="${width - left - right}" height="${Math.max(0, sy(band) - top).toFixed(1)}" fill="${color}"/>`;
+  }
+  const yStep = niceStep(y1 - y0, 4);
+  for (let y = Math.ceil(y0 / yStep) * yStep; y <= y1; y += yStep) {
+    svg += `<line x1="${left}" x2="${width - right}" y1="${sy(y).toFixed(1)}" y2="${sy(y).toFixed(1)}" class="grid"/>`;
+    svg += `<text x="${left - 4}" y="${(sy(y) + 3).toFixed(1)}" class="yaxis">${localDecimal(Number(y.toFixed(2)))}</text>`;
+  }
+  for (let i = 0; i < days; i++) {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    const mid = new Date(day.getTime() + 12 * 3600000);
+    svg += `<text x="${sx(mid).toFixed(1)}" y="${height - 4}" class="axis">${esc(day.toLocaleDateString(LOCALE, { weekday: "narrow" }))}</text>`;
+  }
+  for (const m of markers) {
+    if (m < start || m > end) continue;
+    const x = sx(m);
+    svg += `<path class="marker" d="M${(x - 3).toFixed(1)} ${height - bottom} l3 -6 l3 6 z" fill="${CARE_COLORS.medicine}"/>`;
+  }
+  const sorted = [...points].sort((a, b) => a.t - b.t);
+  svg += `<polyline class="series" style="stroke:${color}" points="${sorted.map((p) => `${sx(p.t).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ")}"/>`;
+  for (const p of sorted) {
+    svg += `<circle class="point" style="fill:${color}" cx="${sx(p.t).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3"><title>${esc(dayLabel(p.t, now))} ${clock(p.t.toISOString())}: ${num(p.y, decimals)} ${esc(unit)}</title></circle>`;
+  }
+  return `<svg class="care-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">${svg}</svg>`;
+}
+
+/** One care chart (for the care part or the trends part). */
+function careChartHtml(chart, events, { days, now, units }) {
+  if (chart.kind === "bars") {
+    const buckets = careDaily(events, chart.match, days, now);
+    return `<div class="chart care"><div class="chart-title">${esc(t("care.per_day", { name: chart.label }))}</div>
+      ${stackedBars(buckets, ["n"], { n: chart.color }, (b) => b.n, { labels: { n: chart.label } })}</div>`;
+  }
+  const imperial = units === "imperial";
+  const care = (events || []).filter((e) => e.kind === "care");
+  const toDisplay = chart.temperature && imperial ? (c) => (c * 9) / 5 + 32 : (v) => v;
+  const unit = chart.temperature ? (imperial ? "°F" : "°C") : chart.unit;
+  const points = care
+    .filter((e) => chart.match(e) && e.value !== null && e.value !== undefined)
+    .map((e) => ({ t: new Date(e.start), y: toDisplay(Number(e.value)) }));
+  const markers = chart.temperature ? care.filter((e) => e.care_type === "medicine").map((e) => new Date(e.start)) : [];
+  const band = chart.temperature ? toDisplay(FEVER_C) : null;
+  const legendItems = chart.temperature && points.length
+    ? legend([[t("care.fever", { value: formatTemperature(FEVER_C, units) }), `color-mix(in srgb, ${chart.color} 25%, transparent)`], ...(markers.length ? [[t("care.given"), CARE_COLORS.medicine]] : [])])
+    : "";
+  return `<div class="chart care"><div class="chart-title">${esc(chart.label)} (${esc(unit)})</div>
+    ${careLineChart(points, { days, now, unit, decimals: chart.temperature ? 1 : 2, band, markers, color: chart.color })}${legendItems}</div>`;
+}
+
+/** "14:10" today, otherwise "Mon 14:10". */
+function whenLabel(date, now) {
+  const time = clock(date.toISOString());
+  return startOfDay(date).getTime() === startOfDay(now).getTime() ? time : `${date.toLocaleDateString(LOCALE, { weekday: "short" })} ${time}`;
+}
+
+/** The state of an active treatment for its tile. */
+export function treatmentStatus(tr, now = new Date()) {
+  const start = new Date(tr.start);
+  const end = tr.end ? new Date(tr.end) : null;
+  const next = tr.next_dose ? new Date(tr.next_dose) : null;
+  const totalDays = end ? Math.round((end - start) / 86400000) : null;
+  const day = now < start ? 0 : Math.floor((now - start) / 86400000) + 1;
+  return {
+    started: now >= start,
+    due: Boolean(next) && next <= now && now >= start,
+    next,
+    last: tr.last_dose ? new Date(tr.last_dose) : null,
+    day: totalDays ? Math.min(day, totalDays) : day,
+    totalDays,
+    progress: end ? Math.min(1, Math.max(0, (now - start) / (end - start))) : null,
+  };
+}
+
+/** "Every 6 h" for a treatment's interval, or "As needed". */
+function everyLabel(hoursBetween) {
+  return hoursBetween ? t("care.every_h", { h: localDecimal(Number(hoursBetween)) }) : t("care.as_needed");
+}
+
 function legend(items) {
   return `<div class="legend">${items
     .map(([label, color]) => `<span><i style="background:${color}"></i>${esc(label)}</span>`)
@@ -1583,6 +1885,8 @@ class BabyTrackerCard extends HTMLElement {
     this._growthOpen = false;
     this._growthForm = {};
     this._milestoneForm = {};
+    this._careForm = {};
+    this._careOpen = false;
     this._growthListOpen = null; // null: follow the growth_list option
     this._msOpen = new Set(); // expanded milestones
     this._msAllOpen = false;
@@ -1957,9 +2261,45 @@ class BabyTrackerCard extends HTMLElement {
       case "milestone-add-open":
         this._openAddDialog();
         break;
+      case "care-open":
+        this._careOpen = !this._careOpen;
+        this._careForm = { mode: this._careForm?.mode || "medicine" };
+        this._renderPart("care");
+        if (this._careOpen) this.shadowRoot.querySelector("#care-first")?.focus();
+        break;
+      case "care-mode":
+        this._careForm = { mode: value, time: this._careForm?.time };
+        this._renderPart("care");
+        this.shadowRoot.querySelector("#care-first")?.focus();
+        break;
+      case "care-recent":
+        this._careForm = { ...this._careForm, text: value };
+        this._renderPart("care");
+        break;
+      case "care-cancel":
+        this._careOpen = false;
+        this._careForm = {};
+        this._renderPart("care");
+        break;
+      case "care-save":
+        this._saveCare();
+        break;
+      case "care-dose":
+        this._call("give_dose", { treatment_id: value });
+        break;
+      case "care-stop": {
+        const tr = (this._data?.care?.treatments || []).find((x) => x.id === value);
+        if (window.confirm(t("care.stop_confirm", { name: tr?.label || "" }))) this._call("stop_treatment", { treatment_id: value });
+        break;
+      }
+      case "care-type-delete": {
+        const own = (this._data?.care?.types || []).find((x) => x.id === value);
+        if (window.confirm(t("care.type_confirm", { name: own?.name || "" }))) this._call("delete_care_type", { care_type: value });
+        break;
+      }
       case "delete": {
         const event = (this._data?.events || []).find((e) => e.id === value);
-        const text = event ? describe(event).text : t("log.this_entry");
+        const text = event ? describe(event, this._data?.care?.types, this._config.units).text : t("log.this_entry");
         if (window.confirm(t("log.confirm", { text }))) this._call("delete_event", { event_id: value });
         break;
       }
@@ -1979,6 +2319,7 @@ class BabyTrackerCard extends HTMLElement {
       const { form, field } = ev.target.dataset;
       if (form === "growth") this._growthForm[field] = ev.target.value;
       if (form === "milestone") this._milestoneForm[field] = ev.target.value;
+      if (form === "care") this._careForm[field] = ev.target.value;
       if (ev.target.id === "bottle-amount") this._bottleAmount = ev.target.value;
     });
     card.addEventListener("keydown", (ev) => {
@@ -2278,6 +2619,7 @@ class BabyTrackerCard extends HTMLElement {
       buttons: () => this._buttonsHtml(d, now, since),
       summary: () => this._summaryHtml(d),
       trends: () => this._trendsHtml(d, now),
+      care: () => this._careHtml(d, now),
       nights: () => {
         const settings = nightSettings(cfg, d.settings);
         return `
@@ -2744,6 +3086,148 @@ class BabyTrackerCard extends HTMLElement {
     if (index >= UPCOMING_SHOWN) this._msShowAll = true;
   }
 
+  /** Log the entry, treatment or type in the care form. */
+  _saveCare() {
+    const f = this._careForm || {};
+    const mode = f.mode || "medicine";
+    const text = (f.text || "").trim();
+    const focus = () => this.shadowRoot.querySelector("#care-first")?.focus();
+    const time = f.time ? new Date(f.time) : null;
+    const when = time && !Number.isNaN(time.getTime()) ? { time: time.toISOString() } : {};
+    let call;
+    if (mode === "medicine" || mode === "note") {
+      if (!text) return focus();
+      call = ["log_entry", { type: mode, text, ...when }];
+    } else if (mode === "temperature") {
+      const value = parseNumber(f.value);
+      if (value === null) return focus();
+      call = ["log_entry", { type: "temperature", value, units: this._config.units === "imperial" ? "imperial" : "metric", ...when }];
+    } else if (mode === "treatment") {
+      const name = (f.name || "").trim();
+      if (!name) return focus();
+      const data = { name };
+      if ((f.dose || "").trim()) data.dose = f.dose.trim();
+      if (parseNumber(f.every)) data.every_hours = parseNumber(f.every);
+      if (parseNumber(f.days)) data.days = Math.round(parseNumber(f.days));
+      call = ["add_treatment", data];
+    } else if (mode === "newtype") {
+      const name = (f.name || "").trim();
+      if (!name) return focus();
+      const data = { name };
+      if ((f.emoji || "").trim()) data.emoji = f.emoji.trim();
+      if ((f.unit || "").trim()) data.unit = f.unit.trim();
+      call = ["add_care_type", data];
+    } else {
+      const data = { type: mode, ...when };
+      if (text) data.text = text;
+      const value = parseNumber(f.value);
+      if (value !== null) data.value = value;
+      call = ["log_entry", data];
+    }
+    return this._call(...call).then((ok) => {
+      if (!ok) return;
+      this._careOpen = false;
+      this._careForm = {};
+      this._renderPart("care");
+    });
+  }
+
+  _careFormHtml(d) {
+    const f = this._careForm || {};
+    const types = (d.care?.types || []).filter((x) => !x.deleted);
+    const mode = f.mode === "newtype" || f.mode === "treatment" || f.mode in CARE_BUILTIN || types.some((x) => x.id === f.mode) ? f.mode : "medicine";
+    const imperial = this._config.units === "imperial";
+    const chip = (value, label) =>
+      `<button class="chip${mode === value ? " on" : ""}" data-action="care-mode" data-value="${esc(value)}" aria-pressed="${mode === value}">${esc(label)}</button>`;
+    const chips = [
+      chip("medicine", `💊 ${t("care.medicine")}`),
+      chip("temperature", `🌡️ ${t("care.temperature")}`),
+      chip("note", `📝 ${t("care.note")}`),
+      ...types.map((x) => chip(x.id, `${x.emoji || "⭐"} ${x.name}`)),
+      chip("treatment", `⏱️ ${t("care.treatment")}`),
+      chip("newtype", `＋ ${t("care.new_type")}`),
+    ].join("");
+    const input = (field, attrs, first = false) =>
+      `<input ${first ? 'id="care-first" ' : ""}data-form="care" data-field="${field}" value="${esc(f[field] ?? "")}" ${attrs}>`;
+    const when = `<label class="span">${esc(t("care.when"))} ${input("time", `type="datetime-local" max="${localDateTime(new Date())}"`)}</label>`;
+    let fields = "";
+    if (mode === "medicine") {
+      const recent = (d.care?.recent || []).filter((r) => r.care_type === "medicine");
+      fields = `<label class="span">${esc(t("care.what"))} ${input("text", `type="text" maxlength="200" autocomplete="off" placeholder="${esc(t("care.medicine_placeholder"))}"`, true)}</label>
+        ${when}
+        ${recent.length ? `<div class="span care-recent"><span>${esc(t("care.recent"))}</span>${recent.map((r) => `<button class="chip" data-action="care-recent" data-value="${esc(r.text)}">${esc(r.text)}</button>`).join("")}</div>` : ""}`;
+    } else if (mode === "temperature") {
+      fields = `<label>${esc(t("care.temp_value", { unit: imperial ? "°F" : "°C" }))} ${input("value", `type="number" inputmode="decimal" step="0.1" placeholder="${imperial ? "99.5" : num(37.5, 1)}"`, true)}</label>${when}`;
+    } else if (mode === "note") {
+      fields = `<label class="span">${esc(t("care.note"))} ${input("text", `type="text" maxlength="200" placeholder="${esc(t("care.note_placeholder"))}"`, true)}</label>${when}`;
+    } else if (mode === "treatment") {
+      const every = ["", "4", "6", "8", "12", "24"];
+      fields = `<label>${esc(t("care.medicine"))} ${input("name", `type="text" maxlength="100" placeholder="${esc(t("care.medicine_placeholder").replace(/ \d.*$/, ""))}"`, true)}</label>
+        <label>${esc(t("care.dose"))} ${input("dose", `type="text" maxlength="50" placeholder="${esc(t("care.dose_placeholder"))}"`)}</label>
+        <label>${esc(t("care.every"))} <select data-form="care" data-field="every">${every
+          .map((h) => `<option value="${h}" ${String(f.every ?? "") === h ? "selected" : ""}>${esc(everyLabel(h ? Number(h) : null))}</option>`)
+          .join("")}</select></label>
+        <label>${esc(t("care.days"))} ${input("days", `type="number" inputmode="numeric" min="1" max="366" step="1"`)}</label>`;
+    } else if (mode === "newtype") {
+      fields = `<label>${esc(t("care.type_name"))} ${input("name", `type="text" maxlength="50" placeholder="${esc(t("care.type_placeholder"))}"`, true)}</label>
+        <label>${esc(t("care.emoji"))} ${input("emoji", `type="text" maxlength="8" placeholder="🛁"`)}</label>
+        <label>${esc(t("care.unit"))} ${input("unit", `type="text" maxlength="12"`)}</label>
+        ${types.length ? `<div class="span care-recent"><span>${esc(t("care.your_types"))}</span>${types.map((x) => `<span class="chip">${esc(`${x.emoji || "⭐"} ${x.name}`)}<button class="icon tiny" title="${esc(t("delete"))}" aria-label="${esc(t("delete"))}" data-action="care-type-delete" data-value="${esc(x.id)}"><ha-icon icon="mdi:close"></ha-icon></button></span>`).join("")}</div>` : ""}`;
+    } else {
+      const own = types.find((x) => x.id === mode);
+      fields = `${own?.unit ? `<label>${esc(t("care.value", { unit: own.unit }))} ${input("value", `type="number" inputmode="decimal" step="any"`, true)}</label>` : ""}
+        <label class="span">${esc(t("care.text_optional"))} ${input("text", `type="text" maxlength="200"`, !own?.unit)}</label>${when}`;
+    }
+    return `<div class="chips care-modes">${chips}</div>
+      <div class="form care-form" data-submit="care-save">${fields}
+        <div class="actions"><button class="small primary" data-action="care-save">${esc(t(mode === "treatment" || mode === "newtype" ? "save" : "care.add"))}</button><button class="small" data-action="care-cancel">${esc(t("cancel"))}</button></div>
+      </div>`;
+  }
+
+  _treatmentHtml(tr, now) {
+    const st = treatmentStatus(tr, now);
+    const meta = [esc(everyLabel(tr.every_hours))];
+    if (!st.started) meta.push(esc(t("care.starts", { time: whenLabel(new Date(tr.start), now) })));
+    else {
+      meta.push(esc(st.last ? t("care.last", { time: whenLabel(st.last, now) }) : t("care.not_given")));
+      if (st.due) meta.push(`<b>${esc(st.last ? t("care.due_since", { time: whenLabel(st.next, now) }) : t("care.due"))}</b>`);
+      else if (st.next) meta.push(esc(t("care.next", { time: whenLabel(st.next, now) })));
+    }
+    if (st.totalDays && st.started) meta.push(esc(t("care.day_of", { n: st.day, total: st.totalDays })));
+    return `<div class="treatment${st.due ? " due" : ""}">
+        <span class="emoji">💊</span>
+        <div class="tr-main"><div class="tr-name">${esc(tr.label)}</div><div class="tr-meta">${meta.join(" · ")}</div></div>
+        <button class="small primary tr-give" data-action="care-dose" data-value="${esc(tr.id)}">${esc(t("care.give"))}</button>
+        <button class="icon" title="${esc(t("care.stop"))}" aria-label="${esc(t("care.stop"))}" data-action="care-stop" data-value="${esc(tr.id)}"><ha-icon icon="mdi:close"></ha-icon></button>
+        ${st.progress !== null ? `<div class="tr-progress"><span style="width:${(st.progress * 100).toFixed(1)}%"></span></div>` : ""}
+      </div>`;
+  }
+
+  _careCharts(d, now, keys) {
+    const types = d.care?.types || [];
+    const options = { days: Number(this._config.days) || 7, now, units: this._config.units };
+    return keys
+      .map((key) => careChart(key, types))
+      .filter(Boolean)
+      .map((chart) => careChartHtml(chart, d.events || [], options))
+      .join("");
+  }
+
+  _careHtml(d, now) {
+    const treatments = d.care?.treatments || [];
+    const configured = this._config.care_charts;
+    const keys = configured === undefined || configured === null || configured === "" ? defaultCareCharts(d.events) : careChartKeys(configured);
+    const charts = this._careCharts(d, now, keys);
+    return `
+        <div class="section care-part">
+          <div class="section-title with-tools">${esc(t("care.title"))}
+            <button class="small" data-action="care-open" aria-expanded="${Boolean(this._careOpen)}"><ha-icon icon="mdi:${this._careOpen ? "close" : "plus"}"></ha-icon>${esc(t("care.add"))}</button></div>
+          ${this._careOpen ? this._careFormHtml(d) : ""}
+          ${treatments.length ? `<div class="treatments">${treatments.map((tr) => this._treatmentHtml(tr, now)).join("")}</div>` : this._careOpen || charts ? "" : `<div class="message">${esc(t("care.none"))}</div>`}
+          ${charts ? `<div class="charts">${charts}</div>` : ""}
+        </div>`;
+  }
+
   _summaryHtml(d) {
     const n = d.last_night || {};
     const day = d.daytime || {};
@@ -2774,6 +3258,7 @@ class BabyTrackerCard extends HTMLElement {
               ${legend(Object.values(SIDES).map((v) => [v.label, v.color]))}</div>
             <div class="chart wide"><div class="chart-title">${esc(t("trends.sleep"))}</div>
               ${stackedBars(buckets, ["sleep"], { sleep: SLEEP_COLORS.night }, (b) => b.sleep, { unit: ` ${t("unit.h")}`, decimals: 1, labels: { sleep: t("button.sleep") } })}</div>
+            ${this._careCharts(d, now, careChartKeys(this._config.care_trends))}
           </div>
         </div>`;
   }
@@ -2791,7 +3276,7 @@ class BabyTrackerCard extends HTMLElement {
         const day = dayLabel(when, now);
         const heading = day !== lastDay ? `<li class="day">${esc(day)}</li>` : "";
         lastDay = day;
-        const { emoji, text } = describe(e);
+        const { emoji, text } = describe(e, d.care?.types, this._config.units);
         return `${heading}<li data-id="${esc(e.id)}"><span class="emoji">${emoji}</span><span class="text">${esc(text)}</span><span class="time">${clock(when.toISOString())}</span>
             <button class="icon" title="${esc(t("delete"))}" aria-label="${esc(t("delete"))}" data-action="delete" data-value="${esc(e.id)}"><ha-icon icon="mdi:close"></ha-icon></button></li>`;
       })
@@ -2924,6 +3409,37 @@ const STYLE = `
   .form .pair input { flex: 1; }
   .form .actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .form-toggle { margin-top: 12px; }
+  .section-title.with-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .section-title.with-tools button.small { padding: 4px 10px; font-weight: normal; }
+  .section-title.with-tools ha-icon { --mdc-icon-size: 18px; }
+  button.chip { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 0.85em; }
+  button.chip.on { border-color: var(--primary-color); color: var(--primary-text-color);
+    background: color-mix(in srgb, var(--primary-color) 14%, var(--secondary-background-color)); }
+  .care-modes { margin-bottom: 4px; }
+  .care-form { margin-top: 8px; }
+  .care-form .span { grid-column: 1 / -1; }
+  .care-form select { min-width: 0; padding: 8px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--card-background-color);
+    color: var(--primary-text-color); font: inherit; font-size: 1rem; }
+  .care-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.8em; color: var(--secondary-text-color); }
+  .care-recent .chip { display: inline-flex; align-items: center; gap: 2px; font-size: 1.15em; }
+  .care-form .care-recent .chip { background: var(--card-background-color); border: 1px solid var(--divider-color); color: var(--primary-text-color); }
+  button.icon.tiny { width: 20px; height: 20px; padding: 0; }
+  button.icon.tiny ha-icon { --mdc-icon-size: 14px; }
+  .treatments { display: grid; gap: 8px; }
+  .treatment { --accent: #e0457b; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 4px 10px; padding: 8px 6px 8px 12px;
+    border-radius: 12px; background: var(--secondary-background-color); border-left: 4px solid var(--accent); }
+  .treatment .emoji { font-size: 1.4em; }
+  .treatment .tr-main { min-width: 0; }
+  .treatment .tr-name { font-weight: 500; overflow-wrap: anywhere; }
+  .treatment .tr-meta { font-size: 0.82em; color: var(--secondary-text-color); }
+  .treatment.due .tr-meta b { color: var(--warning-color, #f57c00); font-weight: 500; }
+  .treatment.due { border-left-color: var(--warning-color, #f57c00); }
+  .treatment .tr-give { background: var(--accent); border-color: var(--accent); }
+  .treatment .tr-progress { grid-column: 1 / -1; height: 4px; border-radius: 4px; background: var(--divider-color); overflow: hidden; }
+  .treatment .tr-progress span { display: block; height: 100%; background: var(--accent); }
+  .care-part .charts { margin-top: 12px; }
+  .chart svg.care-chart { max-height: 190px; }
+  .chart rect.band { opacity: 0.12; }
   .count { font-weight: 400; color: var(--secondary-text-color); font-size: 0.85em; margin-left: 6px; }
   button.collapse { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 12px; padding: 6px 0; background: none;
     border: none; border-top: 1px solid var(--divider-color); color: var(--primary-text-color); font-weight: 500; text-align: left; }
@@ -3148,6 +3664,9 @@ class BabyTrackerCardEditor extends HTMLElement {
         <label>${esc(t("ed.night_from"))} <input type="time" data-key="night_start" value="${esc(c.night_start)}"> ${esc(t("ed.to"))} <input type="time" data-key="night_end" value="${esc(c.night_end)}"></label>
         <small>${esc(t("ed.night_hint"))}</small>
         <label><input type="checkbox" data-key="timeline_details" ${c.timeline_details ? "checked" : ""}> ${esc(t("ed.tl_details"))}</label>
+        <label>${esc(t("ed.care_charts"))} <input type="text" data-key="care_charts" data-csv placeholder="temperature, medicine" value="${esc(careChartKeys(c.care_charts).join(", "))}"></label>
+        <label>${esc(t("ed.care_trends"))} <input type="text" data-key="care_trends" data-csv value="${esc(careChartKeys(c.care_trends).join(", "))}"></label>
+        <small>${esc(t("ed.care_hint"))}</small>
         <label>${esc(t("ed.log_entries"))} <input type="number" min="1" max="100" data-key="log_entries" placeholder="${c.log_visible ? 20 : 10}" value="${esc(c.log_entries ?? "")}"></label>
         <label>${esc(t("ed.log_visible"))} <input type="number" min="1" max="100" data-key="log_visible" value="${esc(c.log_visible ?? "")}"></label>
         <label>${esc(t("ed.units"))} <select data-key="units">
@@ -3166,6 +3685,7 @@ class BabyTrackerCardEditor extends HTMLElement {
         const key = ev.target.dataset.key;
         let value = ev.target.type === "checkbox" ? ev.target.checked : ev.target.value;
         if (ev.target.type === "number" || "number" in ev.target.dataset) value = value === "" ? "" : Number(value);
+        if ("csv" in ev.target.dataset) value = careChartKeys(value).length ? careChartKeys(value) : "";
         if (key === "buttons_columns" && value === 3) value = "";
         this._changed(key, value);
       });

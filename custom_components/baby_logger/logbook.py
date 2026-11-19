@@ -21,7 +21,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         },
         "diaper_default": "diaper",
         "sides": {"left": "left", "right": "right", "bottle": "bottle"},
-        "kinds": {"diaper": "diaper", "feeding": "feeding", "sleep": "sleep"},
+        "kinds": {"diaper": "diaper", "feeding": "feeding", "sleep": "sleep", "care": "care"},
         "undone": {},
         "decimal": ".",
         "diaper": "logged a {diaper} ({at})",
@@ -41,12 +41,19 @@ TEXTS: dict[str, dict[str, Any]] = {
         "add_milestone": "added milestone: {name}",
         "clear_milestone": "cleared milestone: {name}",
         "delete_milestone": "deleted milestone: {name}",
+        "care": "{emoji} {what} ({at})",
+        "dose": "{emoji} gave {what} ({at})",
+        "care_names": {"medicine": "medicine", "temperature": "temperature", "note": "note"},
+        "add_care_type": "added entry type: {name}",
+        "delete_care_type": "removed entry type: {name}",
+        "add_treatment": "💊 started treatment: {name}",
+        "stop_treatment": "stopped treatment: {name}",
     },
     "da": {
         "diaper_types": {"wet": "💧 våd ble", "dirty": "💩 beskidt ble", "both": "💧💩 våd og beskidt ble"},
         "diaper_default": "ble",
         "sides": {"left": "venstre", "right": "højre", "bottle": "flaske"},
-        "kinds": {"diaper": "ble", "feeding": "måltid", "sleep": "søvn"},
+        "kinds": {"diaper": "ble", "feeding": "måltid", "sleep": "søvn", "care": "pleje"},
         # What was undone, by action.
         "undone": {
             "diaper": "ble",
@@ -62,6 +69,12 @@ TEXTS: dict[str, dict[str, Any]] = {
             "clear_milestone": "milepæl nulstillet",
             "add_milestone": "ny milepæl",
             "delete_milestone": "milepæl slettet",
+            "care": "post",
+            "dose": "dosis",
+            "add_care_type": "ny type",
+            "delete_care_type": "type fjernet",
+            "add_treatment": "ny behandling",
+            "stop_treatment": "behandling stoppet",
         },
         "decimal": ",",
         "diaper": "registrerede en {diaper} ({at})",
@@ -81,8 +94,37 @@ TEXTS: dict[str, dict[str, Any]] = {
         "add_milestone": "tilføjede milepæl: {name}",
         "clear_milestone": "nulstillede milepæl: {name}",
         "delete_milestone": "slettede milepæl: {name}",
+        "care": "{emoji} {what} ({at})",
+        "dose": "{emoji} gav {what} ({at})",
+        "care_names": {"medicine": "medicin", "temperature": "temperatur", "note": "note"},
+        "add_care_type": "tilføjede typen: {name}",
+        "delete_care_type": "fjernede typen: {name}",
+        "add_treatment": "💊 startede behandling: {name}",
+        "stop_treatment": "stoppede behandling: {name}",
     },
 }
+
+
+def _care(data: dict[str, Any], text: dict[str, Any], at: str) -> str:
+    """Describe a care entry: its text and / or value, or the name of its type."""
+    parts = []
+    if data.get("type_name"):
+        parts.append(str(data["type_name"]))
+    if data.get("text"):
+        parts.append(str(data["text"]))
+    if data.get("value") is not None:
+        value = f"{data['value']:g}".replace(".", text["decimal"])
+        parts.append(f"{value} {data['unit']}" if data.get("unit") else value)
+    what = (
+        ": ".join([*parts[:1], " ".join(parts[1:])])
+        if len(parts) > 1 and data.get("type_name")
+        else " ".join(parts)
+    )
+    if not what:
+        care_type = str(data.get("care_type", ""))
+        what = text["care_names"].get(care_type, care_type)
+    key = "dose" if data.get("action") == "dose" else "care"
+    return text[key].format(emoji=data.get("emoji") or "", what=what, at=at).strip()
 
 
 def _clock(value: str | None) -> str:
@@ -140,6 +182,12 @@ def describe(data: dict[str, Any], language: str | None = "en") -> str:
         return text["growth"].format(values=", ".join(values))
     if action == "delete_growth":
         return text["delete_growth"]
+    if action in ("care", "dose"):
+        return _care(data, text, at)
+    if action in ("add_care_type", "delete_care_type"):
+        return text[action].format(name=data.get("type_name", ""))
+    if action in ("add_treatment", "stop_treatment"):
+        return text[action].format(name=data.get("treatment_name", ""))
     if action in ("milestone", "add_milestone", "clear_milestone", "delete_milestone"):
         name = localized_milestone_name(str(data.get("milestone", "")), data.get("milestone_name", ""), lang)
         return text[action].format(name=name)
