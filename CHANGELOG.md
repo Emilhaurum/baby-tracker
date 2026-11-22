@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.0
 
 - Treatments: the hours between doses are typed in (any number, e.g. 4.5) instead of picked
   from a list, and a treatment can get a start time.
