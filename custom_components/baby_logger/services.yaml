@@ -243,3 +243,31 @@ stop_treatment:
   fields:
     config_entry_id: *entry
     treatment_id: *treatment
+
+update_treatment:
+  fields:
+    config_entry_id: *entry
+    treatment_id: *treatment
+    name:
+      selector:
+        text:
+    dose:
+      selector:
+        text:
+    every_hours:
+      selector:
+        number:
+          min: 0
+          max: 168
+          step: 0.5
+          unit_of_measurement: h
+          mode: box
+    days:
+      selector:
+        number:
+          min: 0
+          max: 366
+          mode: box
+    start:
+      selector:
+        datetime:

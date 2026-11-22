@@ -1040,10 +1040,10 @@ test("care: adding entries, treatments and types", async () => {
   await card.locator('[data-action="care-mode"][data-value="treatment"]').click();
   await card.locator("#care-first").fill("Antibiotic");
   await card.locator('input[data-field="dose"]').fill("2.5 ml");
-  await card.locator('select[data-field="every"]').selectOption("8");
+  await card.locator('input[data-field="every"]').fill("7.5");
   await card.locator('input[data-field="days"]').fill("7");
   await card.locator('[data-action="care-save"]').click();
-  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", name: "Antibiotic", dose: "2.5 ml", every_hours: 8, days: 7 });
+  assert.deepEqual((await lastCall()).data, { config_entry_id: "e1", name: "Antibiotic", dose: "2.5 ml", every_hours: 7.5, days: 7 });
   // A new type, and removing one.
   await card.locator('[data-action="care-open"]').click();
   await card.locator('[data-action="care-mode"][data-value="newtype"]').click();
@@ -1085,5 +1085,38 @@ test("care: empty part and cards without it", async () => {
   // Not shown unless chosen.
   ({ page, context } = await mount({ snap: careSnap() }));
   assert.equal(await page.locator("baby-logger-card .care-part").count(), 0);
+  await context.close();
+});
+
+test("care: editing a treatment", async () => {
+  const { page, context, errors } = await mount({ config: { parts: ["care"] }, snap: careSnap(), language: "da" });
+  const card = page.locator("baby-logger-card");
+  const lastCall = () => page.evaluate(() => window.hass.calls.at(-1));
+  await card.locator('[data-action="care-edit"][data-value="tr1"]').click();
+  // Filled in with the treatment; no type chips while editing.
+  assert.equal(await card.locator(".care-edit-title").textContent(), "Ændr behandling");
+  assert.equal(await card.locator(".care-modes").count(), 0);
+  assert.equal(await card.locator("#care-first").inputValue(), "Paracetamol");
+  assert.equal(await card.locator('input[data-field="dose"]').inputValue(), "120 mg");
+  assert.equal(await card.locator('input[data-field="every"]').inputValue(), "6");
+  assert.equal(await card.locator('input[data-field="days"]').inputValue(), "5");
+  assert.equal(await card.locator('input[data-field="start"]').inputValue(), "2026-05-02T19:00");
+  await shot(page, "care-edit");
+  await card.locator('input[data-field="every"]').fill("4.5");
+  await card.locator('input[data-field="days"]').fill("");
+  await card.locator('[data-action="care-save"]').click();
+  assert.deepEqual((await lastCall()).data, {
+    config_entry_id: "e1", treatment_id: "tr1", name: "Paracetamol", start: iso("19:00", "2026-05-02"), dose: "120 mg", every_hours: 4.5, days: 0,
+  });
+  assert.equal(await card.locator(".care-form").count(), 0);
+  // An as-needed treatment: empty fields, saved as 0.
+  await card.locator('[data-action="care-edit"][data-value="tr2"]').click();
+  assert.equal(await card.locator('input[data-field="every"]').inputValue(), "");
+  await card.locator('input[data-field="dose"]').fill("2 drops");
+  await card.locator('[data-action="care-save"]').click();
+  const data = (await lastCall()).data;
+  assert.deepEqual([data.service, data.dose, data.every_hours, data.days], [undefined, "2 drops", 0, 0]);
+  assert.equal((await lastCall()).service, "update_treatment");
+  assert.deepEqual(errors, []);
   await context.close();
 });

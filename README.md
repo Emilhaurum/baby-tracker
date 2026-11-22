@@ -254,16 +254,18 @@ Tap **Add** and pick what to log:
 - **Your own types**: tap **New type** to add one with a name, an emoji and, if you like, a
   unit such as ml. A type with a unit asks for a number each time. Types you no longer need
   can be removed there; their entries are kept.
-- **Treatment**: a medicine with a dose, how often it is given (every 4, 6, 8, 12 or 24 hours,
-  or as needed) and for how many days (or until you stop it).
+- **Treatment**: a medicine with a dose, the hours between doses (any number, e.g. 6 or 4.5;
+  leave it empty for a medicine given as needed), for how many days (or until you stop it)
+  and when it starts (now by default).
 
 Every entry has an optional time (now by default). Entries show up in the log, the logbook
 and the trends, can be deleted with ✕ and undone like everything else.
 
 While a treatment runs, it has a tile with the time of the last dose, when the next dose is
 due, which day of the treatment it is, and a **Give** button that logs a dose. The tile turns
-orange when a dose is due, and disappears by itself when the treatment ends. Tap ✕ to stop
-a treatment early.
+orange when a dose is due, and disappears by itself when the treatment ends. Tap ✏️ to change
+a treatment (its name, dose, hours between doses, days or start); doses already given keep the
+text they were logged with. Tap ✕ to stop a treatment early.
 
 **Charts**: without `care_charts` the part charts temperatures and medicine doses per day,
 when there are any. The temperature chart shades the fever range (38 °C / 100.4 °F and
@@ -374,6 +376,7 @@ can't be in the future.
 | `baby_logger.add_care_type` | `name`, `emoji`, `unit` |
 | `baby_logger.delete_care_type` | `care_type` (name or id; logged entries are kept) |
 | `baby_logger.add_treatment` | `name`, `dose`, `every_hours` (leave out for as needed), `days` (leave out for until stopped), `start` |
+| `baby_logger.update_treatment` | `treatment_id`, and any of `name`, `dose` (empty removes it), `every_hours` (`0`: as needed), `days` (`0`: until stopped), `start` (without `days`, the length is kept) |
 | `baby_logger.give_dose` | `treatment_id`, `time` |
 | `baby_logger.stop_treatment` | `treatment_id` |
 
@@ -396,7 +399,7 @@ Every action fires a `baby_logger_event` with `config_entry_id`, `name`, `action
 (`diaper`, `feeding`, `sleep`, `wake`, `undo`, `delete`, `add_sleep`, `update_sleep`,
 `growth`, `delete_growth`, `milestone`, `clear_milestone`, `add_milestone`,
 `delete_milestone`, `care`, `dose`, `add_care_type`, `delete_care_type`, `add_treatment`,
-`stop_treatment`) and details such as `type`, `side`, `minutes`, `milestone_name`, `text` or
+`update_treatment`, `stop_treatment`) and details such as `type`, `side`, `minutes`, `milestone_name`, `text` or
 `value`.
 
 ```yaml

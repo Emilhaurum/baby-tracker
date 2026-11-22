@@ -52,7 +52,7 @@ const SIDES = {
 const SLEEP_COLORS = { night: "#3f51b5", day: "#ffb300" };
 // Names that follow the card's language (see I18N below).
 const UNDO_LABELS = translated(
-  ["diaper", "feeding", "sleep", "wake", "add_sleep", "update_sleep", "delete", "growth", "delete_growth", "milestone", "clear_milestone", "add_milestone", "delete_milestone", "care", "dose", "add_care_type", "delete_care_type", "add_treatment", "stop_treatment"],
+  ["diaper", "feeding", "sleep", "wake", "add_sleep", "update_sleep", "delete", "growth", "delete_growth", "milestone", "clear_milestone", "add_milestone", "delete_milestone", "care", "dose", "add_care_type", "delete_care_type", "add_treatment", "stop_treatment", "update_treatment"],
   "undo"
 );
 const MILESTONE_CATEGORIES = translated(["movement", "communication", "social", "firsts", "custom"], "category");
@@ -182,6 +182,7 @@ export const I18N = {
     "undo.delete_care_type": "Type removed",
     "undo.add_treatment": "Treatment added",
     "undo.stop_treatment": "Treatment stopped",
+    "undo.update_treatment": "Treatment changed",
     "undo.saved": "Saved",
     "category.movement": "Movement",
     "category.communication": "Communication",
@@ -323,7 +324,10 @@ export const I18N = {
     "care.recent": "Recent:",
     "care.dose": "Dose",
     "care.dose_placeholder": "e.g. 120 mg",
-    "care.every": "How often",
+    "care.every": "Hours between doses (empty: as needed)",
+    "care.starts_at": "Starts (empty: now)",
+    "care.starts_on": "Starts",
+    "care.edit": "Change treatment",
     "care.as_needed": "As needed",
     "care.every_h": "Every {h} h",
     "care.days": "Days (empty: until stopped)",
@@ -432,6 +436,7 @@ export const I18N = {
     "undo.delete_care_type": "Type fjernet",
     "undo.add_treatment": "Behandling tilføjet",
     "undo.stop_treatment": "Behandling stoppet",
+    "undo.update_treatment": "Behandling ændret",
     "undo.saved": "Gemt",
     "category.movement": "Bevægelse",
     "category.communication": "Kommunikation",
@@ -573,7 +578,10 @@ export const I18N = {
     "care.recent": "Seneste:",
     "care.dose": "Dosis",
     "care.dose_placeholder": "f.eks. 120 mg",
-    "care.every": "Hvor ofte",
+    "care.every": "Timer mellem doser (tom: efter behov)",
+    "care.starts_at": "Starter (tom: nu)",
+    "care.starts_on": "Starter",
+    "care.edit": "Ændr behandling",
     "care.as_needed": "Efter behov",
     "care.every_h": "Hver {h}. time",
     "care.days": "Dage (tom: indtil den stoppes)",
@@ -2287,6 +2295,24 @@ class BabyTrackerCard extends HTMLElement {
       case "care-dose":
         this._call("give_dose", { treatment_id: value });
         break;
+      case "care-edit": {
+        const tr = (this._data?.care?.treatments || []).find((x) => x.id === value);
+        if (!tr) break;
+        this._careOpen = true;
+        this._careForm = {
+          mode: "treatment",
+          edit: tr.id,
+          name: tr.name,
+          dose: tr.dose || "",
+          // Number inputs always take a "." as the decimal point.
+          every: tr.every_hours ? String(Number(tr.every_hours)) : "",
+          days: String(tr.days ?? (tr.end ? Math.round((new Date(tr.end) - new Date(tr.start)) / 86400000) : "")),
+          start: localDateTime(new Date(tr.start)),
+        };
+        this._renderPart("care");
+        this.shadowRoot.querySelector("#care-first")?.focus();
+        break;
+      }
       case "care-stop": {
         const tr = (this._data?.care?.treatments || []).find((x) => x.id === value);
         if (window.confirm(t("care.stop_confirm", { name: tr?.label || "" }))) this._call("stop_treatment", { treatment_id: value });
@@ -3105,11 +3131,20 @@ class BabyTrackerCard extends HTMLElement {
     } else if (mode === "treatment") {
       const name = (f.name || "").trim();
       if (!name) return focus();
+      const every = parseNumber(f.every);
+      const days = parseNumber(f.days);
+      const start = f.start ? new Date(f.start) : null;
       const data = { name };
-      if ((f.dose || "").trim()) data.dose = f.dose.trim();
-      if (parseNumber(f.every)) data.every_hours = parseNumber(f.every);
-      if (parseNumber(f.days)) data.days = Math.round(parseNumber(f.days));
-      call = ["add_treatment", data];
+      if (start && !Number.isNaN(start.getTime())) data.start = start.toISOString();
+      if (f.edit) {
+        // Every field, so a cleared one is cleared (0: as needed / until stopped).
+        call = ["update_treatment", { treatment_id: f.edit, ...data, dose: (f.dose || "").trim(), every_hours: every || 0, days: days ? Math.round(days) : 0 }];
+      } else {
+        if ((f.dose || "").trim()) data.dose = f.dose.trim();
+        if (every) data.every_hours = every;
+        if (days) data.days = Math.round(days);
+        call = ["add_treatment", data];
+      }
     } else if (mode === "newtype") {
       const name = (f.name || "").trim();
       if (!name) return focus();
@@ -3161,13 +3196,11 @@ class BabyTrackerCard extends HTMLElement {
     } else if (mode === "note") {
       fields = `<label class="span">${esc(t("care.note"))} ${input("text", `type="text" maxlength="200" placeholder="${esc(t("care.note_placeholder"))}"`, true)}</label>${when}`;
     } else if (mode === "treatment") {
-      const every = ["", "4", "6", "8", "12", "24"];
-      fields = `<label>${esc(t("care.medicine"))} ${input("name", `type="text" maxlength="100" placeholder="${esc(t("care.medicine_placeholder").replace(/ \d.*$/, ""))}"`, true)}</label>
+      fields = `${f.edit ? `<div class="span care-edit-title">${esc(t("care.edit"))}</div>` : ""}<label>${esc(t("care.medicine"))} ${input("name", `type="text" maxlength="100" placeholder="${esc(t("care.medicine_placeholder").replace(/ \d.*$/, ""))}"`, true)}</label>
         <label>${esc(t("care.dose"))} ${input("dose", `type="text" maxlength="50" placeholder="${esc(t("care.dose_placeholder"))}"`)}</label>
-        <label>${esc(t("care.every"))} <select data-form="care" data-field="every">${every
-          .map((h) => `<option value="${h}" ${String(f.every ?? "") === h ? "selected" : ""}>${esc(everyLabel(h ? Number(h) : null))}</option>`)
-          .join("")}</select></label>
-        <label>${esc(t("care.days"))} ${input("days", `type="number" inputmode="numeric" min="1" max="366" step="1"`)}</label>`;
+        <label>${esc(t("care.every"))} ${input("every", `type="number" inputmode="decimal" min="0.5" max="168" step="any" placeholder="6"`)}</label>
+        <label>${esc(t("care.days"))} ${input("days", `type="number" inputmode="numeric" min="1" max="366" step="1"`)}</label>
+        <label class="span">${esc(t(f.edit ? "care.starts_on" : "care.starts_at"))} ${input("start", `type="datetime-local"`)}</label>`;
     } else if (mode === "newtype") {
       fields = `<label>${esc(t("care.type_name"))} ${input("name", `type="text" maxlength="50" placeholder="${esc(t("care.type_placeholder"))}"`, true)}</label>
         <label>${esc(t("care.emoji"))} ${input("emoji", `type="text" maxlength="8" placeholder="🛁"`)}</label>
@@ -3178,7 +3211,7 @@ class BabyTrackerCard extends HTMLElement {
       fields = `${own?.unit ? `<label>${esc(t("care.value", { unit: own.unit }))} ${input("value", `type="number" inputmode="decimal" step="any"`, true)}</label>` : ""}
         <label class="span">${esc(t("care.text_optional"))} ${input("text", `type="text" maxlength="200"`, !own?.unit)}</label>${when}`;
     }
-    return `<div class="chips care-modes">${chips}</div>
+    return `${f.edit ? "" : `<div class="chips care-modes">${chips}</div>`}
       <div class="form care-form" data-submit="care-save">${fields}
         <div class="actions"><button class="small primary" data-action="care-save">${esc(t(mode === "treatment" || mode === "newtype" ? "save" : "care.add"))}</button><button class="small" data-action="care-cancel">${esc(t("cancel"))}</button></div>
       </div>`;
@@ -3198,7 +3231,8 @@ class BabyTrackerCard extends HTMLElement {
         <span class="emoji">💊</span>
         <div class="tr-main"><div class="tr-name">${esc(tr.label)}</div><div class="tr-meta">${meta.join(" · ")}</div></div>
         <button class="small primary tr-give" data-action="care-dose" data-value="${esc(tr.id)}">${esc(t("care.give"))}</button>
-        <button class="icon" title="${esc(t("care.stop"))}" aria-label="${esc(t("care.stop"))}" data-action="care-stop" data-value="${esc(tr.id)}"><ha-icon icon="mdi:close"></ha-icon></button>
+        <span class="tr-tools"><button class="icon" title="${esc(t("care.edit"))}" aria-label="${esc(t("care.edit"))}" data-action="care-edit" data-value="${esc(tr.id)}"><ha-icon icon="mdi:pencil"></ha-icon></button>
+        <button class="icon" title="${esc(t("care.stop"))}" aria-label="${esc(t("care.stop"))}" data-action="care-stop" data-value="${esc(tr.id)}"><ha-icon icon="mdi:close"></ha-icon></button></span>
         ${st.progress !== null ? `<div class="tr-progress"><span style="width:${(st.progress * 100).toFixed(1)}%"></span></div>` : ""}
       </div>`;
   }
@@ -3435,6 +3469,9 @@ const STYLE = `
   .treatment.due .tr-meta b { color: var(--warning-color, #f57c00); font-weight: 500; }
   .treatment.due { border-left-color: var(--warning-color, #f57c00); }
   .treatment .tr-give { background: var(--accent); border-color: var(--accent); }
+  .treatment .tr-tools { display: inline-flex; }
+  .treatment .tr-tools ha-icon { --mdc-icon-size: 20px; }
+  .care-edit-title { font-weight: 500; color: var(--primary-text-color); font-size: 1.1em; }
   .treatment .tr-progress { grid-column: 1 / -1; height: 4px; border-radius: 4px; background: var(--divider-color); overflow: hidden; }
   .treatment .tr-progress span { display: block; height: 100%; background: var(--accent); }
   .care-part .charts { margin-top: 12px; }
