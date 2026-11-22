@@ -170,6 +170,9 @@
     },
     "stop_treatment": {
       "service": "mdi:pill-off"
+    },
+    "update_treatment": {
+      "service": "mdi:pill-multiple"
     }
   }
 }

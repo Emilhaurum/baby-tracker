@@ -765,6 +765,40 @@
           "description": "Behandlingens ID."
         }
       }
+    },
+    "update_treatment": {
+      "name": "Ændr behandling",
+      "description": "Ændrer en behandling. Felter, der udelades, forbliver uændrede. Doser, der allerede er givet, beholder deres tekst.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "Barnet, der registreres for."
+        },
+        "treatment_id": {
+          "name": "Behandling",
+          "description": "Behandlingens ID."
+        },
+        "name": {
+          "name": "Medicin",
+          "description": "F.eks. Panodil."
+        },
+        "dose": {
+          "name": "Dosis",
+          "description": "F.eks. 120 mg. Tom fjerner dosis."
+        },
+        "every_hours": {
+          "name": "Hver",
+          "description": "Timer mellem doserne. 0 for medicin, der gives efter behov."
+        },
+        "days": {
+          "name": "Dage",
+          "description": "Hvor mange dage fra starten. 0 for at give den, indtil den stoppes."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Hvornår behandlingen starter. Uden dage beholder en ny start behandlingens længde."
+        }
+      }
     }
   }
 }

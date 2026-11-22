@@ -126,6 +126,7 @@ SERVICE_DELETE_CARE_TYPE: Final = "delete_care_type"
 SERVICE_ADD_TREATMENT: Final = "add_treatment"
 SERVICE_GIVE_DOSE: Final = "give_dose"
 SERVICE_STOP_TREATMENT: Final = "stop_treatment"
+SERVICE_UPDATE_TREATMENT: Final = "update_treatment"
 
 FRONTEND_URL_BASE: Final = f"/{DOMAIN}_static"
 CARD_FILENAME: Final = "baby-logger-card.js"

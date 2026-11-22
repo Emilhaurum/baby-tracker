@@ -48,6 +48,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "delete_care_type": "removed entry type: {name}",
         "add_treatment": "💊 started treatment: {name}",
         "stop_treatment": "stopped treatment: {name}",
+        "update_treatment": "changed treatment: {name}",
     },
     "da": {
         "diaper_types": {"wet": "💧 våd ble", "dirty": "💩 beskidt ble", "both": "💧💩 våd og beskidt ble"},
@@ -75,6 +76,7 @@ TEXTS: dict[str, dict[str, Any]] = {
             "delete_care_type": "type fjernet",
             "add_treatment": "ny behandling",
             "stop_treatment": "behandling stoppet",
+            "update_treatment": "behandling ændret",
         },
         "decimal": ",",
         "diaper": "registrerede en {diaper} ({at})",
@@ -101,6 +103,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "delete_care_type": "fjernede typen: {name}",
         "add_treatment": "💊 startede behandling: {name}",
         "stop_treatment": "stoppede behandling: {name}",
+        "update_treatment": "ændrede behandling: {name}",
     },
 }
 
@@ -186,7 +189,7 @@ def describe(data: dict[str, Any], language: str | None = "en") -> str:
         return _care(data, text, at)
     if action in ("add_care_type", "delete_care_type"):
         return text[action].format(name=data.get("type_name", ""))
-    if action in ("add_treatment", "stop_treatment"):
+    if action in ("add_treatment", "stop_treatment", "update_treatment"):
         return text[action].format(name=data.get("treatment_name", ""))
     if action in ("milestone", "add_milestone", "clear_milestone", "delete_milestone"):
         name = localized_milestone_name(str(data.get("milestone", "")), data.get("milestone_name", ""), lang)

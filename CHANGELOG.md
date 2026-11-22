@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Treatments: the hours between doses are typed in (any number, e.g. 4.5) instead of picked
+  from a list, and a treatment can get a start time.
+- Treatments can be changed: tap ✏️ on a treatment to change its name, dose, hours between
+  doses, days or start. New action `update_treatment`.
+
 ## 1.5.0
 
 - Medicine & care: a new card part, `care`, for logging medicine, temperatures, notes and

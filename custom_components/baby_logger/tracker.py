@@ -997,15 +997,8 @@ class BabyTracker:
         start: datetime | None = None,
     ) -> dict[str, Any]:
         """Start a treatment: a medicine given every few hours, for some days or until stopped."""
-        name = name.strip()[:100]
-        if not name:
-            raise _care_error("care_name_empty")
-        if every_hours is not None and not MIN_EVERY_HOURS <= every_hours <= MAX_EVERY_HOURS:
-            raise _care_error(
-                "every_hours_out_of_range", min=f"{MIN_EVERY_HOURS:g}", max=f"{MAX_EVERY_HOURS:g}"
-            )
-        if days is not None and not 1 <= days <= MAX_TREATMENT_DAYS:
-            raise _care_error("days_out_of_range", max=str(MAX_TREATMENT_DAYS))
+        name = self._treatment_name(name)
+        self._check_treatment(every_hours, days)
         begins = _as_utc(start).replace(second=0, microsecond=0)
         treatment = {
             "id": f"tr_{uuid.uuid4().hex[:12]}",
@@ -1026,6 +1019,65 @@ class BabyTracker:
             "add_treatment", {"treatment_id": treatment["id"], "treatment_name": self._dose_text(treatment)}
         )
         return treatment
+
+    @staticmethod
+    def _treatment_name(name: str) -> str:
+        name = name.strip()[:100]
+        if not name:
+            raise _care_error("care_name_empty")
+        return name
+
+    @staticmethod
+    def _check_treatment(every_hours: float | None, days: int | None) -> None:
+        if every_hours is not None and not MIN_EVERY_HOURS <= every_hours <= MAX_EVERY_HOURS:
+            raise _care_error(
+                "every_hours_out_of_range", min=f"{MIN_EVERY_HOURS:g}", max=f"{MAX_EVERY_HOURS:g}"
+            )
+        if days is not None and not 1 <= days <= MAX_TREATMENT_DAYS:
+            raise _care_error("days_out_of_range", max=str(MAX_TREATMENT_DAYS))
+
+    @callback
+    def async_update_treatment(
+        self,
+        treatment_id: str,
+        *,
+        name: str | None = None,
+        dose: str | None = None,
+        every_hours: float | None = None,
+        days: int | None = None,
+        start: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Change a treatment. Left out: unchanged; every_hours 0: as needed; days 0: until stopped.
+
+        Doses already given keep the text they were logged with.
+        """
+        treatment = self.get_treatment(treatment_id)
+        changed = dict(treatment)
+        if name is not None:
+            changed["name"] = self._treatment_name(name)
+        if dose is not None:
+            changed["dose"] = dose.strip()[:50] or None
+        if every_hours is not None:
+            changed["every_hours"] = every_hours or None
+        self._check_treatment(changed["every_hours"], days or None)
+        if start is not None:
+            changed["start"] = _as_utc(start).replace(second=0, microsecond=0)
+        if days is not None:
+            changed["end"] = changed["start"] + timedelta(days=days) if days else None
+        elif start is not None and treatment["end"] is not None:
+            # A new start keeps the treatment's length.
+            changed["end"] = changed["start"] + (treatment["end"] - treatment["start"])
+        index = self.treatments.index(treatment)
+        self.treatments[index] = changed
+
+        def restore() -> None:
+            self.treatments = [t if t["id"] != treatment_id else treatment for t in self.treatments]
+
+        self._set_undo("update_treatment", restore)
+        self._changed(
+            "update_treatment", {"treatment_id": treatment_id, "treatment_name": self._dose_text(changed)}
+        )
+        return changed
 
     @staticmethod
     def _dose_text(treatment: dict[str, Any]) -> str:
@@ -1074,6 +1126,9 @@ class BabyTracker:
         return {
             **_treatment_as_dict(treatment),
             "label": self._dose_text(treatment),
+            "days": round((treatment["end"] - treatment["start"]) / timedelta(days=1))
+            if treatment["end"]
+            else None,
             "doses": len(doses),
             "doses_today": sum(1 for e in doses if e.start >= midnight),
             "last_dose": last.isoformat() if last else None,

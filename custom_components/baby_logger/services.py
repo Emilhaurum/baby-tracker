@@ -63,6 +63,7 @@ from .const import (
     SERVICE_START_SLEEP,
     SERVICE_STOP_TREATMENT,
     SERVICE_UNDO,
+    SERVICE_UPDATE_TREATMENT,
     UNITS_IMPERIAL,
     UNITS_METRIC,
 )
@@ -151,6 +152,19 @@ SCHEMAS: dict[str, vol.Schema] = {
     ),
     SERVICE_GIVE_DOSE: vol.Schema({**BASE, vol.Required(ATTR_TREATMENT): cv.string, **OPTIONAL_TIME}),
     SERVICE_STOP_TREATMENT: vol.Schema({**BASE, vol.Required(ATTR_TREATMENT): cv.string}),
+    SERVICE_UPDATE_TREATMENT: vol.Schema(
+        {
+            **BASE,
+            vol.Required(ATTR_TREATMENT): cv.string,
+            vol.Optional(ATTR_NAME): vol.All(cv.string, vol.Length(min=1, max=100)),
+            vol.Optional(ATTR_DOSE): vol.All(cv.string, vol.Length(max=50)),
+            # 0: as needed.
+            vol.Optional(ATTR_EVERY_HOURS): vol.All(vol.Coerce(float), vol.Range(min=0, max=MAX_EVERY_HOURS)),
+            # 0: until stopped.
+            vol.Optional(ATTR_DAYS): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_TREATMENT_DAYS)),
+            vol.Optional(ATTR_START): cv.datetime,
+        }
+    ),
 }
 
 
@@ -312,6 +326,18 @@ def _async_setup_care_services(hass: HomeAssistant) -> None:
         event = tracker.async_give_dose(call.data[ATTR_TREATMENT], call.data.get(ATTR_TIME))
         return {"event": event.as_dict()}
 
+    async def update_treatment(call: ServiceCall) -> ServiceResponse:
+        tracker = get_tracker(hass, call.data[ATTR_CONFIG_ENTRY_ID])
+        treatment = tracker.async_update_treatment(
+            call.data[ATTR_TREATMENT],
+            name=call.data.get(ATTR_NAME),
+            dose=call.data.get(ATTR_DOSE),
+            every_hours=call.data.get(ATTR_EVERY_HOURS),
+            days=call.data.get(ATTR_DAYS),
+            start=call.data.get(ATTR_START),
+        )
+        return {"treatment": tracker.treatment_state(treatment)}
+
     async def stop_treatment(call: ServiceCall) -> None:
         get_tracker(hass, call.data[ATTR_CONFIG_ENTRY_ID]).async_stop_treatment(call.data[ATTR_TREATMENT])
 
@@ -320,6 +346,7 @@ def _async_setup_care_services(hass: HomeAssistant) -> None:
         (SERVICE_ADD_CARE_TYPE, add_care_type),
         (SERVICE_ADD_TREATMENT, add_treatment),
         (SERVICE_GIVE_DOSE, give_dose),
+        (SERVICE_UPDATE_TREATMENT, update_treatment),
     ):
         hass.services.async_register(
             DOMAIN, name, handler, schema=SCHEMAS[name], supports_response=SupportsResponse.OPTIONAL

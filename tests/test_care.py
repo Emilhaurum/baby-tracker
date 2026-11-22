@@ -269,3 +269,56 @@ def test_logbook_texts() -> None:
     assert describe({"action": "stop_treatment", "treatment_name": "X"}, "da") == "stoppede behandling: X"
     assert describe({"action": "undo", "undone": "dose"}, "da") == "↩️ fortrød seneste handling (dosis)"
     assert describe({"action": "delete", "kind": "care"}, "da") == "slettede en registrering (pleje)"
+
+
+async def test_update_treatment(
+    hass: HomeAssistant, entry: MockConfigEntry, freezer: FrozenDateTimeFactory
+) -> None:
+    freezer.move_to("2026-05-04 08:00:00+02:00")
+    tracker = entry.runtime_data
+    events = async_capture_events(hass, EVENT_BABY_TRACKER)
+    tid = (
+        await call(
+            hass, "add_treatment", response=True, name="Paracetamol", dose="120 mg", every_hours=6, days=5
+        )
+    )["treatment"]["id"]
+    await call(hass, "give_dose", treatment_id=tid)
+    # Change the interval and dose: the next dose follows the new interval, old doses keep their text.
+    result = await call(
+        hass, "update_treatment", response=True, treatment_id=tid, every_hours=4.5, dose="100 mg"
+    )
+    tr = result["treatment"]
+    assert (tr["label"], tr["every_hours"], tr["days"]) == ("Paracetamol 100 mg", 4.5, 5)
+    assert tr["next_dose"] == "2026-05-04T10:30:00+00:00"
+    assert tracker.events[-1].text == "Paracetamol 120 mg"
+    assert events[-1].data["action"] == "update_treatment"
+    assert describe(events[-1].data, "da") == "ændrede behandling: Paracetamol 100 mg"
+    # Undo puts it back.
+    await call(hass, "undo")
+    assert tracker.active_treatments()[0]["every_hours"] == 6
+    # A new start keeps the length; days changes the end; 0 means as needed / until stopped.
+    await call(hass, "update_treatment", treatment_id=tid, start="2026-05-03T08:00:00+02:00")
+    tr = tracker.active_treatments()[0]
+    assert (tr["start"], tr["end"]) == ("2026-05-03T06:00:00+00:00", "2026-05-08T06:00:00+00:00")
+    await call(hass, "update_treatment", treatment_id=tid, days=2)
+    assert tracker.active_treatments()[0]["end"] == "2026-05-05T06:00:00+00:00"
+    await call(hass, "update_treatment", treatment_id=tid, every_hours=0, days=0, name=" Ibuprofen ", dose="")
+    tr = tracker.active_treatments()[0]
+    assert (tr["label"], tr["every_hours"], tr["end"], tr["days"], tr["next_dose"]) == (
+        "Ibuprofen",
+        None,
+        None,
+        None,
+        None,
+    )
+    # Validation.
+    for kwargs, key in (
+        ({"every_hours": 0.2}, "every_hours_out_of_range"),
+        ({"name": " "}, "care_name_empty"),
+    ):
+        with pytest.raises(ServiceValidationError) as err:
+            tracker.async_update_treatment(tid, **kwargs)
+        assert err.value.translation_key == key
+    with pytest.raises(ServiceValidationError) as err:
+        await call(hass, "update_treatment", treatment_id="nope", days=3)
+    assert err.value.translation_key == "treatment_not_found"

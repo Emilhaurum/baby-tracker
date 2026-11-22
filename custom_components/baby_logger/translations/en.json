@@ -765,6 +765,40 @@
           "description": "The ID of the treatment."
         }
       }
+    },
+    "update_treatment": {
+      "name": "Change treatment",
+      "description": "Changes a treatment. Fields left out stay as they are. Doses already given keep their text.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Baby",
+          "description": "The baby to log for."
+        },
+        "treatment_id": {
+          "name": "Treatment",
+          "description": "The ID of the treatment."
+        },
+        "name": {
+          "name": "Medicine",
+          "description": "e.g. Paracetamol."
+        },
+        "dose": {
+          "name": "Dose",
+          "description": "e.g. 120 mg. Empty removes the dose."
+        },
+        "every_hours": {
+          "name": "Every",
+          "description": "Hours between doses. 0 for a medicine given as needed."
+        },
+        "days": {
+          "name": "Days",
+          "description": "How many days from the start. 0 to give it until stopped."
+        },
+        "start": {
+          "name": "Start",
+          "description": "When the treatment starts. Without days, a new start keeps the treatment's length."
+        }
+      }
     }
   }
 }
