@@ -2761,7 +2761,7 @@ class BabyTrackerCard extends HTMLElement {
         </div>
         <div class="tile">
           <div class="tile-head"><ha-icon icon="mdi:baby-bottle-outline"></ha-icon>${esc(t("tile.feeding"))}</div>
-          <div class="big">${lastFeeding ? since(lastFeeding.start) : "–"}</div>
+          <div class="big">${lastFeeding ? since(lastFeeding.end || lastFeeding.start) : "–"}</div>
           <div class="sub">${feedingSub}</div>
           <div class="buttons">${feedButtons}</div>
           ${this._bottleForm("tiles")}
