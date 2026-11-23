@@ -1120,3 +1120,25 @@ test("care: editing a treatment", async () => {
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("time since the last feeding runs from its last side", async () => {
+  const feeding = {
+    id: "f3", kind: "feeding", start: iso("13:00"), end: iso("14:30"),
+    sides: [{ side: "left", time: iso("13:00") }, { side: "right", time: iso("14:30") }], side: "right", amount_ml: null,
+  };
+  const { page, context, errors } = await mount({ config: { parts: ["tiles"] }, snap: snapshot({ last_feeding: feeding }) });
+  const tile = page.locator("baby-logger-card .tile").nth(1);
+  // It's 15:00: half an hour since the switch to the right side (not two hours since the start).
+  assert.equal(await tile.locator(".big").textContent(), "0h 30m");
+  assert.match(await tile.locator(".sub").textContent(), /Left → Right/);
+  // Still counting from the last side a minute later.
+  await page.clock.fastForward("01:00");
+  await page.waitForTimeout(50);
+  assert.equal(await tile.locator(".big").textContent(), "0h 31m");
+  // A feeding without an end (older data) counts from its start.
+  await page.evaluate((snap) => window.hass.push(snap), snapshot({ last_feeding: { ...feeding, end: null } }));
+  await page.waitForTimeout(50);
+  assert.equal(await tile.locator(".big").textContent(), "2h 01m");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

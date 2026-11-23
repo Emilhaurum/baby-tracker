@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Card: the time since the last feeding on the Feeding tile counts from the feeding's last
+  side, so after *Left → Right* it runs from when Right was tapped.
+
 ## 1.6.0
 
 - Treatments: the hours between doses are typed in (any number, e.g. 4.5) instead of picked

@@ -23,7 +23,8 @@ Everything is stored locally in Home Assistant.
   within the *same feeding window* (45 minutes by default) of the previous one count as
   a side switch in the same feeding, so a feeding can be *Left → Right → Left*. A side
   logged afterwards for a time just before a feeding becomes that feeding's first side. The
-  next breast to start with is suggested.
+  next breast to start with is suggested, and the time since the last feeding counts from its
+  last side.
 - **Sleep**: tap when the baby falls asleep and when they wake up. Sleeps are kept in an
   editable calendar, so you can add, move or delete them afterwards.
 - **Night and daytime sleep**: hours asleep, wake-ups and naps for the last night and
