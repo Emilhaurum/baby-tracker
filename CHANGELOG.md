@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.1
 
 - Card: the time since the last feeding on the Feeding tile counts from the feeding's last
   side, so after *Left → Right* it runs from when Right was tapped.
