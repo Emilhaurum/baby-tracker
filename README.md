@@ -7,6 +7,7 @@
 [![HACS](https://img.shields.io/badge/HACS-Integration-41BDF5.svg)](https://hacs.xyz)
 [![Validate](https://github.com/Emilhaurum/baby-tracker/actions/workflows/validate.yml/badge.svg)](https://github.com/Emilhaurum/baby-tracker/actions/workflows/validate.yml)
 [![Release](https://img.shields.io/github/v/release/Emilhaurum/baby-tracker)](https://github.com/Emilhaurum/baby-tracker/releases)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/emilhaurum)
 
 Track diaper changes, feedings and sleep from Home Assistant: one tap on a dashboard,
 a button on your phone's home screen, a watch, a voice assistant or an automation.
