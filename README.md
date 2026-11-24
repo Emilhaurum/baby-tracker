@@ -65,8 +65,6 @@ Everything is stored locally in Home Assistant.
 [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Emilhaurum&repository=baby-tracker&category=integration)
 
 1. In HACS, search for **Baby Tracker** and download it.
-   If it isn't listed yet, add `https://github.com/Emilhaurum/baby-tracker` as a
-   [custom repository](https://hacs.xyz/docs/faq/custom_repositories/) of type *Integration*.
 2. Restart Home Assistant.
 
 ### Manual
