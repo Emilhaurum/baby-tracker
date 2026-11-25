@@ -3,4 +3,4 @@
 # hacs.json. pytest therefore doesn't run on the minimum; the e2e job in
 # validate.yml does run it (and the latest release), but only the main flows.
 pytest-homeassistant-custom-component==0.13.375
-ruff==0.17.5
+ruff==0.17.6
